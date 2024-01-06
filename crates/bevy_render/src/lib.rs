@@ -251,7 +251,7 @@ impl Plugin for RenderPlugin {
                         let surface = primary_window.map(|wrapper| unsafe {
                             let handle = wrapper.get_handle();
                             instance
-                                .create_surface(&handle)
+                                .create_surface_from_raw(&handle)
                                 .expect("Failed to create wgpu surface")
                         });
 

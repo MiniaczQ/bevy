@@ -129,7 +129,7 @@ const GPU_NOT_FOUND_ERROR_MESSAGE: &str = if cfg!(target_os = "linux") {
 pub async fn initialize_renderer(
     instance: &Instance,
     options: &WgpuSettings,
-    request_adapter_options: &RequestAdapterOptions<'_>,
+    request_adapter_options: &RequestAdapterOptions<'_, '_>,
 ) -> (RenderDevice, RenderQueue, RenderAdapterInfo, RenderAdapter) {
     let adapter = instance
         .request_adapter(request_adapter_options)
@@ -150,26 +150,26 @@ pub async fn initialize_renderer(
     let trace_path = None;
 
     // Maybe get features and limits based on what is supported by the adapter/backend
-    let mut features = wgpu::Features::empty();
-    let mut limits = options.limits.clone();
+    let mut required_features = wgpu::Features::empty();
+    let mut required_limits = options.limits.clone();
     if matches!(options.priority, WgpuSettingsPriority::Functionality) {
-        features = adapter.features();
+        required_features = adapter.features();
         if adapter_info.device_type == wgpu::DeviceType::DiscreteGpu {
             // `MAPPABLE_PRIMARY_BUFFERS` can have a significant, negative performance impact for
             // discrete GPUs due to having to transfer data across the PCI-E bus and so it
             // should not be automatically enabled in this case. It is however beneficial for
             // integrated GPUs.
-            features -= wgpu::Features::MAPPABLE_PRIMARY_BUFFERS;
+            required_features -= wgpu::Features::MAPPABLE_PRIMARY_BUFFERS;
         }
-        limits = adapter.limits();
+        required_limits = adapter.limits();
     }
 
     // Enforce the disabled features
     if let Some(disabled_features) = options.disabled_features {
-        features -= disabled_features;
+        required_features -= disabled_features;
     }
     // NOTE: |= is used here to ensure that any explicitly-enabled features are respected.
-    features |= options.features;
+    required_features |= options.features;
 
     // Enforce the limit constraints
     if let Some(constrained_limits) = options.constrained_limits.as_ref() {
@@ -178,95 +178,95 @@ pub async fn initialize_renderer(
         // specified max_limits. For 'min' limits, take the maximum instead. This is intended to
         // err on the side of being conservative. We can't claim 'higher' limits that are supported
         // but we can constrain to 'lower' limits.
-        limits = wgpu::Limits {
-            max_texture_dimension_1d: limits
+        required_limits = wgpu::Limits {
+            max_texture_dimension_1d: required_limits
                 .max_texture_dimension_1d
                 .min(constrained_limits.max_texture_dimension_1d),
-            max_texture_dimension_2d: limits
+            max_texture_dimension_2d: required_limits
                 .max_texture_dimension_2d
                 .min(constrained_limits.max_texture_dimension_2d),
-            max_texture_dimension_3d: limits
+            max_texture_dimension_3d: required_limits
                 .max_texture_dimension_3d
                 .min(constrained_limits.max_texture_dimension_3d),
-            max_texture_array_layers: limits
+            max_texture_array_layers: required_limits
                 .max_texture_array_layers
                 .min(constrained_limits.max_texture_array_layers),
-            max_bind_groups: limits
+            max_bind_groups: required_limits
                 .max_bind_groups
                 .min(constrained_limits.max_bind_groups),
-            max_dynamic_uniform_buffers_per_pipeline_layout: limits
+            max_dynamic_uniform_buffers_per_pipeline_layout: required_limits
                 .max_dynamic_uniform_buffers_per_pipeline_layout
                 .min(constrained_limits.max_dynamic_uniform_buffers_per_pipeline_layout),
-            max_dynamic_storage_buffers_per_pipeline_layout: limits
+            max_dynamic_storage_buffers_per_pipeline_layout: required_limits
                 .max_dynamic_storage_buffers_per_pipeline_layout
                 .min(constrained_limits.max_dynamic_storage_buffers_per_pipeline_layout),
-            max_sampled_textures_per_shader_stage: limits
+            max_sampled_textures_per_shader_stage: required_limits
                 .max_sampled_textures_per_shader_stage
                 .min(constrained_limits.max_sampled_textures_per_shader_stage),
-            max_samplers_per_shader_stage: limits
+            max_samplers_per_shader_stage: required_limits
                 .max_samplers_per_shader_stage
                 .min(constrained_limits.max_samplers_per_shader_stage),
-            max_storage_buffers_per_shader_stage: limits
+            max_storage_buffers_per_shader_stage: required_limits
                 .max_storage_buffers_per_shader_stage
                 .min(constrained_limits.max_storage_buffers_per_shader_stage),
-            max_storage_textures_per_shader_stage: limits
+            max_storage_textures_per_shader_stage: required_limits
                 .max_storage_textures_per_shader_stage
                 .min(constrained_limits.max_storage_textures_per_shader_stage),
-            max_uniform_buffers_per_shader_stage: limits
+            max_uniform_buffers_per_shader_stage: required_limits
                 .max_uniform_buffers_per_shader_stage
                 .min(constrained_limits.max_uniform_buffers_per_shader_stage),
-            max_uniform_buffer_binding_size: limits
+            max_uniform_buffer_binding_size: required_limits
                 .max_uniform_buffer_binding_size
                 .min(constrained_limits.max_uniform_buffer_binding_size),
-            max_storage_buffer_binding_size: limits
+            max_storage_buffer_binding_size: required_limits
                 .max_storage_buffer_binding_size
                 .min(constrained_limits.max_storage_buffer_binding_size),
-            max_vertex_buffers: limits
+            max_vertex_buffers: required_limits
                 .max_vertex_buffers
                 .min(constrained_limits.max_vertex_buffers),
-            max_vertex_attributes: limits
+            max_vertex_attributes: required_limits
                 .max_vertex_attributes
                 .min(constrained_limits.max_vertex_attributes),
-            max_vertex_buffer_array_stride: limits
+            max_vertex_buffer_array_stride: required_limits
                 .max_vertex_buffer_array_stride
                 .min(constrained_limits.max_vertex_buffer_array_stride),
-            max_push_constant_size: limits
+            max_push_constant_size: required_limits
                 .max_push_constant_size
                 .min(constrained_limits.max_push_constant_size),
-            min_uniform_buffer_offset_alignment: limits
+            min_uniform_buffer_offset_alignment: required_limits
                 .min_uniform_buffer_offset_alignment
                 .max(constrained_limits.min_uniform_buffer_offset_alignment),
-            min_storage_buffer_offset_alignment: limits
+            min_storage_buffer_offset_alignment: required_limits
                 .min_storage_buffer_offset_alignment
                 .max(constrained_limits.min_storage_buffer_offset_alignment),
-            max_inter_stage_shader_components: limits
+            max_inter_stage_shader_components: required_limits
                 .max_inter_stage_shader_components
                 .min(constrained_limits.max_inter_stage_shader_components),
-            max_compute_workgroup_storage_size: limits
+            max_compute_workgroup_storage_size: required_limits
                 .max_compute_workgroup_storage_size
                 .min(constrained_limits.max_compute_workgroup_storage_size),
-            max_compute_invocations_per_workgroup: limits
+            max_compute_invocations_per_workgroup: required_limits
                 .max_compute_invocations_per_workgroup
                 .min(constrained_limits.max_compute_invocations_per_workgroup),
-            max_compute_workgroup_size_x: limits
+            max_compute_workgroup_size_x: required_limits
                 .max_compute_workgroup_size_x
                 .min(constrained_limits.max_compute_workgroup_size_x),
-            max_compute_workgroup_size_y: limits
+            max_compute_workgroup_size_y: required_limits
                 .max_compute_workgroup_size_y
                 .min(constrained_limits.max_compute_workgroup_size_y),
-            max_compute_workgroup_size_z: limits
+            max_compute_workgroup_size_z: required_limits
                 .max_compute_workgroup_size_z
                 .min(constrained_limits.max_compute_workgroup_size_z),
-            max_compute_workgroups_per_dimension: limits
+            max_compute_workgroups_per_dimension: required_limits
                 .max_compute_workgroups_per_dimension
                 .min(constrained_limits.max_compute_workgroups_per_dimension),
-            max_buffer_size: limits
+            max_buffer_size: required_limits
                 .max_buffer_size
                 .min(constrained_limits.max_buffer_size),
-            max_bindings_per_bind_group: limits
+            max_bindings_per_bind_group: required_limits
                 .max_bindings_per_bind_group
                 .min(constrained_limits.max_bindings_per_bind_group),
-            max_non_sampler_bindings: limits
+            max_non_sampler_bindings: required_limits
                 .max_non_sampler_bindings
                 .min(constrained_limits.max_non_sampler_bindings),
         };
@@ -276,8 +276,8 @@ pub async fn initialize_renderer(
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: options.device_label.as_ref().map(|a| a.as_ref()),
-                features,
-                limits,
+                required_features,
+                required_limits,
             },
             trace_path,
         )

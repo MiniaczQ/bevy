@@ -4,8 +4,9 @@ use crate::render_resource::{
 };
 use bevy_ecs::system::Resource;
 use wgpu::{
-    util::DeviceExt, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BufferAsyncError, BufferBindingType,
+    util::{DeviceExt, TextureDataOrder},
+    BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
+    BufferAsyncError, BufferBindingType,
 };
 
 use super::RenderQueue;
@@ -163,9 +164,12 @@ impl RenderDevice {
         desc: &wgpu::TextureDescriptor,
         data: &[u8],
     ) -> Texture {
-        let wgpu_texture = self
-            .device
-            .create_texture_with_data(render_queue.as_ref(), desc, data);
+        let wgpu_texture = self.device.create_texture_with_data(
+            render_queue.as_ref(),
+            desc,
+            TextureDataOrder::default(),
+            data,
+        );
         Texture::from(wgpu_texture)
     }
 

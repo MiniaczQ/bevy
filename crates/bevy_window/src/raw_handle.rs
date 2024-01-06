@@ -1,6 +1,7 @@
 use bevy_ecs::prelude::Component;
 use raw_window_handle::{
-    HasRawDisplayHandle, HasRawWindowHandle, RawDisplayHandle, RawWindowHandle,
+    DisplayHandle, HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+    WindowHandle,
 };
 
 /// A wrapper over [`RawWindowHandle`] and [`RawDisplayHandle`] that allows us to safely pass it across threads.
@@ -46,26 +47,20 @@ unsafe impl Sync for RawHandleWrapper {}
 /// In many cases, this should only be constructed on the main thread.
 pub struct ThreadLockedRawWindowHandleWrapper(RawHandleWrapper);
 
-// SAFETY: the caller has validated that this is a valid context to get [`RawHandleWrapper`]
-// as otherwise an instance of this type could not have been constructed
-// NOTE: we cannot simply impl HasRawWindowHandle for RawHandleWrapper,
-// as the `raw_window_handle` method is safe. We cannot guarantee that all calls
-// of this method are correct (as it may be off the main thread on an incompatible platform),
-// and so exposing a safe method to get a [`RawWindowHandle`] directly would be UB.
-unsafe impl HasRawWindowHandle for ThreadLockedRawWindowHandleWrapper {
-    fn raw_window_handle(&self) -> RawWindowHandle {
-        self.0.window_handle
+impl HasDisplayHandle for ThreadLockedRawWindowHandleWrapper {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        // SAFETY: same as before
+        Ok(unsafe { DisplayHandle::borrow_raw(self.0.display_handle) })
     }
 }
 
-// SAFETY: the caller has validated that this is a valid context to get [`RawDisplayHandle`]
-// as otherwise an instance of this type could not have been constructed
-// NOTE: we cannot simply impl HasRawDisplayHandle for RawHandleWrapper,
-// as the `raw_display_handle` method is safe. We cannot guarantee that all calls
-// of this method are correct (as it may be off the main thread on an incompatible platform),
-// and so exposing a safe method to get a [`RawDisplayHandle`] directly would be UB.
-unsafe impl HasRawDisplayHandle for ThreadLockedRawWindowHandleWrapper {
-    fn raw_display_handle(&self) -> RawDisplayHandle {
-        self.0.display_handle
+impl HasWindowHandle for ThreadLockedRawWindowHandleWrapper {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        // SAFETY: same as before
+        Ok(unsafe { WindowHandle::borrow_raw(self.0.window_handle) })
     }
 }
