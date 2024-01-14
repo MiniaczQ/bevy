@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{solari::SolariGlobalIlluminationSettings, *};
 use bevy_app::{App, Plugin};
 use bevy_asset::{Asset, AssetApp, AssetEvent, AssetId, AssetServer, Assets, Handle};
 use bevy_core_pipeline::{
@@ -473,15 +473,16 @@ pub fn queue_material_meshes<M: Material>(
         Option<&DebandDither>,
         Option<&EnvironmentMapLight>,
         Option<&ShadowFilteringMethod>,
-        Has<ScreenSpaceAmbientOcclusionSettings>,
         (
+            Has<ScreenSpaceAmbientOcclusionSettings>,
             Has<NormalPrepass>,
             Has<DepthPrepass>,
             Has<MotionVectorPrepass>,
             Has<DeferredPrepass>,
+            Has<SolariGlobalIlluminationSettings>,
+            Has<TemporalJitter>,
         ),
         Option<&Camera3d>,
-        Has<TemporalJitter>,
         Option<&Projection>,
         &mut RenderPhase<Opaque3d>,
         &mut RenderPhase<AlphaMask3d>,
@@ -498,10 +499,16 @@ pub fn queue_material_meshes<M: Material>(
         dither,
         environment_map,
         shadow_filter_method,
-        ssao,
-        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
+        (
+            ssao,
+            normal_prepass,
+            depth_prepass,
+            motion_vector_prepass,
+            deferred_prepass,
+            solari,
+            temporal_jitter,
+        ),
         camera_3d,
-        temporal_jitter,
         projection,
         mut opaque_phase,
         mut alpha_mask_phase,
@@ -531,6 +538,10 @@ pub fn queue_material_meshes<M: Material>(
 
         if deferred_prepass {
             view_key |= MeshPipelineKey::DEFERRED_PREPASS;
+        }
+
+        if solari {
+            view_key |= MeshPipelineKey::GLOBAL_ILLUMINATION;
         }
 
         if temporal_jitter {

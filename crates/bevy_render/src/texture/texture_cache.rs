@@ -53,7 +53,10 @@ impl TextureCache {
                 }
 
                 let texture = render_device.create_texture(&entry.key().clone());
-                let default_view = texture.create_view(&TextureViewDescriptor::default());
+                let default_view = texture.create_view(&TextureViewDescriptor {
+                    label: None,
+                    ..Default::default()
+                });
                 entry.get_mut().push(CachedTextureMeta {
                     texture: texture.clone(),
                     default_view: default_view.clone(),
@@ -67,7 +70,10 @@ impl TextureCache {
             }
             Entry::Vacant(entry) => {
                 let texture = render_device.create_texture(entry.key());
-                let default_view = texture.create_view(&TextureViewDescriptor::default());
+                let default_view = texture.create_view(&TextureViewDescriptor {
+                    label: None,
+                    ..Default::default()
+                });
                 entry.insert(vec![CachedTextureMeta {
                     texture: texture.clone(),
                     default_view: default_view.clone(),

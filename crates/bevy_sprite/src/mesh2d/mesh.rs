@@ -298,7 +298,10 @@ impl FromWorld for Mesh2dPipeline {
                 image.texture_descriptor.size,
             );
 
-            let texture_view = texture.create_view(&TextureViewDescriptor::default());
+            let texture_view = texture.create_view(&TextureViewDescriptor {
+                label: None,
+                ..Default::default()
+            });
             GpuImage {
                 texture,
                 texture_view,

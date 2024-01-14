@@ -1,8 +1,9 @@
+pub mod deferred;
+pub mod solari;
 pub mod wireframe;
 
 mod alpha;
 mod bundle;
-pub mod deferred;
 mod environment_map;
 mod extended_material;
 mod fog;
@@ -73,7 +74,7 @@ use bevy_render::{
 use bevy_transform::TransformSystem;
 use environment_map::EnvironmentMapPlugin;
 
-use crate::deferred::DeferredPbrLightingPlugin;
+use crate::{deferred::DeferredPbrLightingPlugin, solari::SolariPlugin};
 
 pub const PBR_TYPES_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1708015359337029744);
 pub const PBR_BINDINGS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(5635987986427308186);
@@ -261,6 +262,7 @@ impl Plugin for PbrPlugin {
                 ExtractResourcePlugin::<DefaultOpaqueRendererMethod>::default(),
                 ExtractComponentPlugin::<ShadowFilteringMethod>::default(),
                 LightmapPlugin,
+                SolariPlugin,
             ))
             .configure_sets(
                 PostUpdate,

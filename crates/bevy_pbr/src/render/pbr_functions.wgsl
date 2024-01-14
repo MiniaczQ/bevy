@@ -17,6 +17,7 @@
 #ifdef ENVIRONMENT_MAP
 #import bevy_pbr::environment_map
 #endif
+#import bevy_pbr::utils::PI
 
 #import bevy_core_pipeline::tonemapping::{screen_space_dither, powsafe, tone_mapping}
 
@@ -360,6 +361,12 @@ fn apply_pbr_lighting(
 
 #ifdef LIGHTMAP
     indirect_light += in.lightmap_light * diffuse_color;
+#endif
+
+#ifdef GLOBAL_ILLUMINATION
+    let gi = textureLoad(view_bindings::global_illumination_texture, vec2<i32>(in.frag_coord.xy), 0).rgb;
+    // TODO: Use occlusion?
+    indirect_light += gi * (diffuse_color / PI);
 #endif
 
     let emissive_light = emissive.rgb * output_color.a;

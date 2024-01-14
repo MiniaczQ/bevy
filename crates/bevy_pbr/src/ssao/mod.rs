@@ -342,7 +342,10 @@ impl FromWorld for SsaoPipelines {
                 }),
                 bytemuck::cast_slice(&generate_hilbert_index_lut()),
             )
-            .create_view(&TextureViewDescriptor::default());
+            .create_view(&TextureViewDescriptor {
+                label: None,
+                ..Default::default()
+            });
 
         let point_clamp_sampler = render_device.create_sampler(&SamplerDescriptor {
             min_filter: FilterMode::Nearest,

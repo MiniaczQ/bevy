@@ -4,6 +4,7 @@ mod bind_group_entries;
 mod bind_group_layout;
 mod bind_group_layout_entries;
 mod buffer;
+mod buffer_cache;
 mod buffer_vec;
 mod gpu_array_buffer;
 mod pipeline;
@@ -20,6 +21,7 @@ pub use bind_group_entries::*;
 pub use bind_group_layout::*;
 pub use bind_group_layout_entries::*;
 pub use buffer::*;
+pub use buffer_cache::*;
 pub use buffer_vec::*;
 pub use gpu_array_buffer::*;
 pub use pipeline::*;
@@ -57,6 +59,10 @@ pub use wgpu::{
 pub mod encase {
     pub use bevy_encase_derive::ShaderType;
     pub use encase::*;
+}
+
+pub mod raytrace {
+    pub use wgpu::ray_tracing::*;
 }
 
 pub use self::encase::{ShaderSize, ShaderType};
