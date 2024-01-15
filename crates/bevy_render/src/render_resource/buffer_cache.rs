@@ -1,6 +1,6 @@
 use crate::{
     render_resource::{Buffer, BufferDescriptor},
-    renderer::RenderDevice,
+    renderer::{RenderDevice, RenderQueue},
 };
 use bevy_ecs::{prelude::ResMut, system::Resource};
 use bevy_utils::{Entry, HashMap};
@@ -53,6 +53,46 @@ impl BufferCache {
                     taken: true,
                     frames_since_last_use: 0,
                 }]);
+                CachedBuffer { buffer }
+            }
+        }
+    }
+
+    pub fn get_or(
+        &mut self,
+        render_device: &RenderDevice,
+        descriptor: BufferDescriptor<'static>,
+        queue: &RenderQueue,
+        callback: impl FnOnce() -> Vec<u8>,
+    ) -> CachedBuffer {
+        match self.buffers.entry(descriptor) {
+            Entry::Occupied(mut entry) => {
+                for buffer in entry.get_mut().iter_mut() {
+                    if !buffer.taken {
+                        buffer.frames_since_last_use = 0;
+                        buffer.taken = true;
+                        return CachedBuffer {
+                            buffer: buffer.buffer.clone(),
+                        };
+                    }
+                }
+
+                let buffer = render_device.create_buffer(&entry.key().clone());
+                entry.get_mut().push(CachedBufferMeta {
+                    buffer: buffer.clone(),
+                    frames_since_last_use: 0,
+                    taken: true,
+                });
+                CachedBuffer { buffer }
+            }
+            Entry::Vacant(entry) => {
+                let buffer = render_device.create_buffer(entry.key());
+                entry.insert(vec![CachedBufferMeta {
+                    buffer: buffer.clone(),
+                    taken: true,
+                    frames_since_last_use: 0,
+                }]);
+                queue.write_buffer(&buffer, 0, &callback());
                 CachedBuffer { buffer }
             }
         }

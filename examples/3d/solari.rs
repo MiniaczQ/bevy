@@ -5,7 +5,7 @@ use bevy::{
         experimental::taa::{TemporalAntiAliasBundle, TemporalAntiAliasPlugin},
         prepass::NormalPrepass,
     },
-    pbr::solari::{SolariEnabled, SolariGlobalIlluminationSettings, SolariSupported},
+    pbr::solari::{SolariEnabled, SolariSupported, SurfelsSettings},
     prelude::*,
 };
 
@@ -13,7 +13,7 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, TemporalAntiAliasPlugin))
         .insert_resource(AmbientLight {
-            brightness: 0.0,
+            brightness: 0.5,
             ..Default::default()
         })
         .add_systems(
@@ -69,7 +69,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             }),
             ..default()
         },
-        SolariGlobalIlluminationSettings::default(),
+        SurfelsSettings::default(),
         TemporalAntiAliasBundle::default(),
         NormalPrepass,
         CameraController::default(),
@@ -98,18 +98,14 @@ fn solari_not_supported(mut commands: Commands) {
 fn toggle_solari(
     key_input: Res<Input<KeyCode>>,
     mut commands: Commands,
-    camera: Query<(Entity, Has<SolariGlobalIlluminationSettings>), With<Camera>>,
+    camera: Query<(Entity, Has<SurfelsSettings>), With<Camera>>,
 ) {
     if key_input.just_pressed(KeyCode::Space) {
         let (entity, gi_enabled) = camera.single();
         if gi_enabled {
-            commands
-                .entity(entity)
-                .remove::<SolariGlobalIlluminationSettings>();
+            commands.entity(entity).remove::<SurfelsSettings>();
         } else {
-            commands
-                .entity(entity)
-                .insert(SolariGlobalIlluminationSettings::default());
+            commands.entity(entity).insert(SurfelsSettings::default());
         }
     }
 }

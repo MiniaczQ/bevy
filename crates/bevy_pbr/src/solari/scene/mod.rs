@@ -16,8 +16,8 @@ mod blas;
 mod helpers;
 mod scene_types;
 
-const SOLARI_SCENE_TYPES_SHADER: Handle<Shader> = Handle::weak_from_u128(0017171717171755);
-const SOLARI_SCENE_BINDINGS_SHADER: Handle<Shader> = Handle::weak_from_u128(0017171717171756);
+const SOLARI_SCENE_TYPES_SHADER: Handle<Shader> = Handle::weak_from_u128(17171717171755);
+const SOLARI_SCENE_BINDINGS_SHADER: Handle<Shader> = Handle::weak_from_u128(17171717171756);
 
 pub struct SolariScenePlugin;
 

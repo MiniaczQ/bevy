@@ -78,7 +78,7 @@ pub fn prepare_blas(
             |(mesh, gpu_mesh, blas_size, index_buffer, index_buffer_offset)| BlasBuildEntry {
                 blas: blas_storage.storage.get(*mesh).unwrap(),
                 geometry: BlasGeometries::TriangleGeometries(vec![BlasTriangleGeometry {
-                    size: &blas_size,
+                    size: blas_size,
                     vertex_buffer: &gpu_mesh.vertex_buffer,
                     first_vertex: 0,
                     vertex_stride: gpu_mesh.layout.layout().array_stride,
@@ -107,7 +107,7 @@ fn filter_compatible_meshes(
     !blas_storage.storage.contains_key(mesh)
         && gpu_mesh.primitive_topology == PrimitiveTopology::TriangleList
         && gpu_mesh.layout.attribute_ids()
-            == &[
+            == [
                 Mesh::ATTRIBUTE_POSITION.id,
                 Mesh::ATTRIBUTE_NORMAL.id,
                 Mesh::ATTRIBUTE_UV_0.id,

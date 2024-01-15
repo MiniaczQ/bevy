@@ -1,8 +1,6 @@
-pub(crate) use self::global_illumination::SolariGlobalIlluminationViewResources;
-pub use self::global_illumination::{
-    SolariGlobalIlluminationNode, SolariGlobalIlluminationPlugin, SolariGlobalIlluminationSettings,
-};
 use self::scene::SolariScenePlugin;
+pub(crate) use self::surfels::SurfelsViewResources;
+pub use self::surfels::{SurfelsNode, SurfelsPlugin, SurfelsSettings};
 use bevy_app::{App, Plugin};
 use bevy_ecs::{
     system::Resource,
@@ -18,8 +16,9 @@ use bevy_render::{
     RenderApp,
 };
 
-mod global_illumination;
+//mod global_illumination;
 mod scene;
+mod surfels;
 
 #[derive(Default)]
 pub struct SolariPlugin;
@@ -44,7 +43,7 @@ impl Plugin for SolariPlugin {
             .init_resource::<SpatiotemporalBlueNoise>();
 
         app.insert_resource(SolariSupported)
-            .add_plugins((SolariScenePlugin, SolariGlobalIlluminationPlugin));
+            .add_plugins((SolariScenePlugin, SurfelsPlugin));
     }
 
     fn build(&self, _: &mut App) {}

@@ -1,8 +1,7 @@
 use crate::{
-    render, solari::SolariGlobalIlluminationSettings, AlphaMode, DrawMesh, DrawPrepass,
-    EnvironmentMapLight, MeshPipeline, MeshPipelineKey, PrepassPipelinePlugin, PrepassPlugin,
-    RenderMeshInstances, ScreenSpaceAmbientOcclusionSettings, SetMeshBindGroup,
-    SetMeshViewBindGroup, Shadow,
+    render, solari::SurfelsSettings, AlphaMode, DrawMesh, DrawPrepass, EnvironmentMapLight,
+    MeshPipeline, MeshPipelineKey, PrepassPipelinePlugin, PrepassPlugin, RenderMeshInstances,
+    ScreenSpaceAmbientOcclusionSettings, SetMeshBindGroup, SetMeshViewBindGroup, Shadow,
 };
 use bevy_app::{App, Plugin};
 use bevy_asset::{Asset, AssetApp, AssetEvent, AssetId, AssetServer, Assets, Handle};
@@ -442,7 +441,7 @@ pub fn queue_material_meshes<M: Material>(
         Option<&DebandDither>,
         Option<&EnvironmentMapLight>,
         Option<&ScreenSpaceAmbientOcclusionSettings>,
-        Option<&SolariGlobalIlluminationSettings>,
+        Option<&SurfelsSettings>,
         Option<&NormalPrepass>,
         Option<&TemporalAntiAliasSettings>,
         &mut RenderPhase<Opaque3d>,

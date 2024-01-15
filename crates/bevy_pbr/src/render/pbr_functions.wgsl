@@ -16,6 +16,9 @@
 #ifdef ENVIRONMENT_MAP
 #import bevy_pbr::environment_map
 #endif
+#ifdef GLOBAL_ILLUMINATION
+#import surfels::pbr as surfels
+#endif
 #import bevy_pbr::utils PI
 
 #import bevy_pbr::mesh_bindings   mesh
@@ -269,12 +272,6 @@ fn pbr(
     indirect_light += (environment_light.diffuse * occlusion) + environment_light.specular;
 #endif
 
-#ifdef GLOBAL_ILLUMINATION
-    let gi = textureLoad(view_bindings::global_illumination_texture, vec2<i32>(in.frag_coord.xy), 0).rgb;
-    // TODO: Use occlusion?
-    indirect_light += gi * (diffuse_color / PI);
-#endif
-
     let emissive_light = emissive.rgb * output_color.a;
 
     // Total light
@@ -290,6 +287,10 @@ fn pbr(
         offset_and_counts,
         cluster_index,
     );
+
+#ifdef GLOBAL_ILLUMINATION
+    output_color = surfels::pbr(output_color, in.world_position, in.frag_coord);
+#endif
 
     return output_color;
 }

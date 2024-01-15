@@ -99,7 +99,7 @@ pub fn extract(
                     mesh_handle.clone_weak(),
                     material_handle.clone_weak(),
                     solari_material,
-                    transform.clone(),
+                    *transform,
                 ),
             ));
         }

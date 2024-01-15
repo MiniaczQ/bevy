@@ -1,6 +1,6 @@
 use crate::{
-    environment_map, prepass, solari::SolariGlobalIlluminationViewResources, EnvironmentMapLight,
-    FogMeta, GlobalLightMeta, GpuFog, GpuLights, GpuPointLights, LightMeta, MaterialBindGroupId,
+    environment_map, prepass, solari::SurfelsViewResources, EnvironmentMapLight, FogMeta,
+    GlobalLightMeta, GpuFog, GpuLights, GpuPointLights, LightMeta, MaterialBindGroupId,
     NotShadowCaster, NotShadowReceiver, PreviousGlobalTransform,
     ScreenSpaceAmbientOcclusionTextures, Shadow, ShadowSamplers, ViewClusterBindings,
     ViewFogUniformOffset, ViewLightsUniformOffset, ViewShadowBindings,
@@ -46,7 +46,7 @@ use bevy_render::{
 };
 use bevy_transform::components::GlobalTransform;
 use bevy_utils::{tracing::error, EntityHashMap, HashMap, Hashed};
-use std::cell::Cell;
+use std::{cell::Cell, num::NonZeroU64};
 use thread_local::ThreadLocal;
 
 use crate::render::{
@@ -499,14 +499,47 @@ impl FromWorld for MeshPipeline {
                     },
                     count: None,
                 },
-                // Global illumination texture
+                // allocated_surfel_ids_stack
                 BindGroupLayoutEntry {
                     binding: 12,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        multisampled: false,
-                        sample_type: TextureSampleType::Float { filterable: false },
-                        view_dimension: TextureViewDimension::D2,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(4) }),
+                    },
+                    count: None,
+                },
+                // allocated_surfels_count
+                BindGroupLayoutEntry {
+                    binding: 13,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(4) }),
+                    },
+                    count: None,
+                },
+                // surfel_position
+                BindGroupLayoutEntry {
+                    binding: 14,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(16) }),
+                    },
+                    count: None,
+                },
+                // surfel_irradiance
+                BindGroupLayoutEntry {
+                    binding: 15,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(16) }),
                     },
                     count: None,
                 },
@@ -514,18 +547,18 @@ impl FromWorld for MeshPipeline {
 
             // EnvironmentMapLight
             let environment_map_entries =
-                environment_map::get_bind_group_layout_entries([13, 14, 15]);
+                environment_map::get_bind_group_layout_entries([16, 17, 18]);
             entries.extend_from_slice(&environment_map_entries);
 
             // Tonemapping
-            let tonemapping_lut_entries = get_lut_bind_group_layout_entries([16, 17]);
+            let tonemapping_lut_entries = get_lut_bind_group_layout_entries([19, 20]);
             entries.extend_from_slice(&tonemapping_lut_entries);
 
             if cfg!(any(not(feature = "webgl"), not(target_arch = "wasm32")))
                 || (cfg!(all(feature = "webgl", target_arch = "wasm32")) && !multisampled)
             {
                 entries.extend_from_slice(&prepass::get_bind_group_layout_entries(
-                    [18, 19, 20],
+                    [21, 22, 23],
                     multisampled,
                 ));
             }
@@ -1082,7 +1115,7 @@ pub fn prepare_mesh_view_bind_groups(
         &ViewShadowBindings,
         &ViewClusterBindings,
         Option<&ScreenSpaceAmbientOcclusionTextures>,
-        Option<&SolariGlobalIlluminationViewResources>,
+        Option<&SurfelsViewResources>,
         Option<&ViewPrepassTextures>,
         Option<&EnvironmentMapLight>,
         &Tonemapping,
@@ -1113,7 +1146,7 @@ pub fn prepare_mesh_view_bind_groups(
             view_shadow_bindings,
             view_cluster_bindings,
             ssao_textures,
-            solari_gi_resources,
+            surfel_resources,
             prepass_textures,
             environment_map,
             tonemapping,
@@ -1189,11 +1222,27 @@ pub fn prepare_mesh_view_bind_groups(
                 },
                 BindGroupEntry {
                     binding: 12,
-                    resource: BindingResource::TextureView(
-                        solari_gi_resources
-                            .map(|r| &r.diffuse_irradiance_output.default_view)
-                            .unwrap_or(&fallback_ssao_gi),
-                    ),
+                    resource: surfel_resources
+                        .map(|t| t.allocated_surfel_ids_stack.buffer.as_entire_binding())
+                        .unwrap(),
+                },
+                BindGroupEntry {
+                    binding: 13,
+                    resource: surfel_resources
+                        .map(|t| t.allocated_surfels_count.buffer.as_entire_binding())
+                        .unwrap(),
+                },
+                BindGroupEntry {
+                    binding: 14,
+                    resource: surfel_resources
+                        .map(|t| t.surfel_position.buffer.as_entire_binding())
+                        .unwrap(),
+                },
+                BindGroupEntry {
+                    binding: 15,
+                    resource: surfel_resources
+                        .map(|t| t.surfel_irradiance.buffer.as_entire_binding())
+                        .unwrap(),
                 },
             ];
 
@@ -1201,12 +1250,12 @@ pub fn prepare_mesh_view_bind_groups(
                 environment_map,
                 &images,
                 &fallback_cubemap,
-                [13, 14, 15],
+                [16, 17, 18],
             );
             entries.extend_from_slice(&env_map);
 
             let tonemapping_luts =
-                get_lut_bindings(&images, &tonemapping_luts, tonemapping, [16, 17]);
+                get_lut_bindings(&images, &tonemapping_luts, tonemapping, [19, 20]);
             entries.extend_from_slice(&tonemapping_luts);
 
             // When using WebGL, we can't have a depth texture with multisampling
@@ -1218,7 +1267,7 @@ pub fn prepare_mesh_view_bind_groups(
                     &mut fallback_images,
                     &mut fallback_depths,
                     &msaa,
-                    [18, 19, 20],
+                    [21, 22, 23],
                 ));
             }
 

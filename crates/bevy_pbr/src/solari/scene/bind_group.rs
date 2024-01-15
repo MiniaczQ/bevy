@@ -23,6 +23,7 @@ use std::iter;
 #[derive(Resource, Default)]
 pub struct SolariSceneBindGroup(pub Option<BindGroup>);
 
+#[allow(clippy::too_many_arguments)]
 pub fn queue_scene_bind_group(
     objects: Query<(
         &Handle<Mesh>,
