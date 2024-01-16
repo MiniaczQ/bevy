@@ -20,7 +20,7 @@ mod node;
 mod pipelines;
 mod view_resources;
 
-const SURFEL_STACK_SIZE: u64 = 1024;
+const MAX_SURFELS: u64 = 1024;
 
 const SURFELS_SHADER_VIEW_BINDINGS: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_000);
 const SURFELS_SHADER_SPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_001);

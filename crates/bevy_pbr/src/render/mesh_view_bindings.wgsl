@@ -34,11 +34,13 @@
 
 @group(0) @binding(11) var screen_space_ambient_occlusion_texture: texture_2d<f32>;
 
-const SURFEL_STACK_SIZE: u32 = 1024u;
-@group(0) @binding(12) var<storage, read_write> allocated_surfel_ids_stack: array<u32, SURFEL_STACK_SIZE>;
-@group(0) @binding(13) var<storage, read_write> allocated_surfels_count: atomic<u32>;
-@group(0) @binding(14) var<storage, read_write> surfel_position: array<vec3<f32>, SURFEL_STACK_SIZE>;
-@group(0) @binding(15) var<storage, read_write> surfel_irradiance: array<vec3<f32>, SURFEL_STACK_SIZE>;
+const MAX_SURFELS: u32 = 1024u;
+const SURFEL_MAP_BITS: u32 = 32u;
+
+@group(0) @binding(12) var<storage, read_write> allocated_surfels_bitmap: array<u32, SURFEL_MAP_BITS>;
+@group(0) @binding(13) var<storage, read_write> allocated_surfel_ids_count: atomic<u32>;
+@group(0) @binding(14) var<storage, read_write> surfel_position: array<vec4<f32>, MAX_SURFELS>;
+@group(0) @binding(15) var<storage, read_write> surfel_irradiance: array<vec4<f32>, MAX_SURFELS>;
 
 @group(0) @binding(16) var environment_map_diffuse: texture_cube<f32>;
 @group(0) @binding(17) var environment_map_specular: texture_cube<f32>;

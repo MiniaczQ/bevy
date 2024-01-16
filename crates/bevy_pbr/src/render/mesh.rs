@@ -499,7 +499,7 @@ impl FromWorld for MeshPipeline {
                     },
                     count: None,
                 },
-                // allocated_surfel_ids_stack
+                // allocated_surfels_bitmap
                 BindGroupLayoutEntry {
                     binding: 12,
                     visibility: ShaderStages::FRAGMENT,
@@ -510,7 +510,7 @@ impl FromWorld for MeshPipeline {
                     },
                     count: None,
                 },
-                // allocated_surfels_count
+                // allocated_surfel_ids_count
                 BindGroupLayoutEntry {
                     binding: 13,
                     visibility: ShaderStages::FRAGMENT,
@@ -1223,13 +1223,13 @@ pub fn prepare_mesh_view_bind_groups(
                 BindGroupEntry {
                     binding: 12,
                     resource: surfel_resources
-                        .map(|t| t.allocated_surfel_ids_stack.buffer.as_entire_binding())
+                        .map(|t| t.allocated_surfels_bitmap.buffer.as_entire_binding())
                         .unwrap(),
                 },
                 BindGroupEntry {
                     binding: 13,
                     resource: surfel_resources
-                        .map(|t| t.allocated_surfels_count.buffer.as_entire_binding())
+                        .map(|t| t.allocated_surfel_ids_count.buffer.as_entire_binding())
                         .unwrap(),
                 },
                 BindGroupEntry {
