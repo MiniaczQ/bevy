@@ -33,6 +33,8 @@ pub struct SurfelsViewResources {
     surfel_normal: CachedBuffer,
     surfel_irradiance: CachedBuffer,
     pub diffuse_irradiance_output: CachedTexture,
+    pub surfels_to_allocate: CachedBuffer,
+    surfel_grid_allocate: CachedBuffer,
 }
 
 pub fn prepare_resources(
@@ -90,6 +92,9 @@ pub fn prepare_resources(
             viewport_size,
         );
         diffuse_irradiance_output.usage |= TextureUsages::TEXTURE_BINDING;
+        let surfel_grid_allocate = buffer("surfel_grid_allocate", 4 * 16 * 16);
+        let mut surfels_to_allocate = buffer("surfels_to_allocate", 12);
+        surfels_to_allocate.usage |= BufferUsages::INDIRECT;
 
         commands.entity(entity).insert(SurfelsViewResources {
             unallocated_surfel_ids_stack: buffer_cache.get_or(
@@ -109,11 +114,15 @@ pub fn prepare_resources(
             surfel_normal: buffer_cache.get(&render_device, surfel_normal),
             surfel_irradiance: buffer_cache.get(&render_device, surfel_irradiance),
             diffuse_irradiance_output: texture_cache.get(&render_device, diffuse_irradiance_output),
+            surfel_grid_allocate: buffer_cache.get(&render_device, surfel_grid_allocate),
+            surfels_to_allocate: buffer_cache.get(&render_device, surfels_to_allocate),
         });
     }
 }
 
-pub fn create_bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout {
+pub fn create_bind_group_layout(
+    render_device: &RenderDevice,
+) -> (BindGroupLayout, BindGroupLayout) {
     let mut entry_i = 0;
     let mut entry = |ty| {
         entry_i += 1;
@@ -186,17 +195,36 @@ pub fn create_bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout
             format: TextureFormat::Rgba16Float,
             view_dimension: TextureViewDimension::D2,
         }),
+        // surfel_grid_allocate
+        entry(BindingType::Buffer {
+            ty: BufferBindingType::Storage { read_only: false },
+            has_dynamic_offset: false,
+            min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(4 * 16 * 16) }),
+        }),
+        // surfels_to_allocate
+        entry(BindingType::Buffer {
+            ty: BufferBindingType::Storage { read_only: false },
+            has_dynamic_offset: false,
+            min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(12) }),
+        }),
     ];
 
-    render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-        label: Some("surfels_view_bind_group_layout"),
-        entries,
-    })
+    (
+        render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("surfels_view_bind_group_layout_with_surfels_to_allocate"),
+            entries,
+        }),
+        render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("surfels_view_bind_group_layout"),
+            entries: &entries[0..entries.len() - 1],
+        }),
+    )
 }
 
 #[derive(Component)]
 pub struct SurfelsBindGroups {
     pub view_bind_group: BindGroup,
+    pub view_bind_group_with_surfels_to_allocate: BindGroup,
 }
 
 pub(crate) fn prepare_bind_groups(
@@ -231,13 +259,22 @@ pub(crate) fn prepare_bind_groups(
             entry(b(&surfels_res.surfel_normal)),
             entry(b(&surfels_res.surfel_irradiance)),
             entry(t(&surfels_res.diffuse_irradiance_output)),
+            entry(b(&surfels_res.surfel_grid_allocate)),
+            entry(b(&surfels_res.surfels_to_allocate)),
         ];
 
         let bind_groups = SurfelsBindGroups {
+            view_bind_group_with_surfels_to_allocate: render_device.create_bind_group(
+                &BindGroupDescriptor {
+                    label: Some("surfels_view_bind_group_with_surfels_to_allocate"),
+                    layout: &pipelines.view_bind_group_layout_with_surfels_to_allocate,
+                    entries,
+                },
+            ),
             view_bind_group: render_device.create_bind_group(&BindGroupDescriptor {
                 label: Some("surfels_view_bind_group"),
                 layout: &pipelines.view_bind_group_layout,
-                entries,
+                entries: &entries[0..entries.len() - 1],
             }),
         };
         commands.entity(entity).insert(bind_groups);

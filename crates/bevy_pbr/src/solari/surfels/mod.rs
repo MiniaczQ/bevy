@@ -23,10 +23,11 @@ mod view_resources;
 const MAX_SURFELS: u64 = 1024;
 
 const SURFELS_SHADER_VIEW_BINDINGS: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_000);
-const SURFELS_SHADER_SPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_001);
-const SURFELS_SHADER_DESPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_002);
-const SURFELS_SHADER_DIFFUSE: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_003);
-const SURFELS_SHADER_UTILS: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_004);
+const SURFELS_SHADER_PRESPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_002);
+const SURFELS_SHADER_SPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_003);
+const SURFELS_SHADER_DESPAWN: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_004);
+const SURFELS_SHADER_DIFFUSE: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_005);
+const SURFELS_SHADER_UTILS: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_006);
 
 pub struct SurfelsPlugin;
 
@@ -36,6 +37,12 @@ impl Plugin for SurfelsPlugin {
             app,
             SURFELS_SHADER_VIEW_BINDINGS,
             "view_bindings.wgsl",
+            Shader::from_wgsl
+        );
+        load_internal_asset!(
+            app,
+            SURFELS_SHADER_PRESPAWN,
+            "surfels_prespawn.wgsl",
             Shader::from_wgsl
         );
         load_internal_asset!(

@@ -1,10 +1,10 @@
-#import surfels::view_bindings allocate_surfel, view, allocated_surfel_ids_count, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID
-#import bevy_solari::scene_bindings uniforms, map_ray_hit
-#import surfels::utils trace_ray, rand_vec2f, rand_f, depth_to_world_position
+#import surfels::view_bindings allocate_surfel, view, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS
+#import bevy_solari::scene_bindings uniforms
+#import surfels::utils rand_vec2f, depth_to_world_position
 
-@compute @workgroup_size(64)
-fn spawn_one_surfel(@builtin(local_invocation_index) local_index: u32) {
-    var rng = uniforms.frame_count * 64u + local_index;
+@compute @workgroup_size(1)
+fn spawn_one_surfel(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    var rng = uniforms.frame_count * MAX_SPAWNS + global_id.x;
     let screen_uv = rand_vec2f(&rng);
     let pixel_uv = vec2<u32>(screen_uv * view.viewport.zw);
     let clip_z = textureLoad(depth_buffer, pixel_uv, 0i);
@@ -13,17 +13,19 @@ fn spawn_one_surfel(@builtin(local_invocation_index) local_index: u32) {
         return;
     }
 
+    let world_xyz = depth_to_world_position(clip_z, screen_uv);
+    // Check for closest surfel, fail if too close
+
     let id = allocate_surfel();
     if id == INVALID_SURFEL_ID {
         // Out of surfels
         return;
     }
 
-    let world_xyz = depth_to_world_position(clip_z, screen_uv);
-    //let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
     surfel_position[id] = vec4<f32>(world_xyz, 1.0);
-    //surfel_normal[id] = vec4<f32>(normal, 1.0);
-    //surfel_irradiance[id] = vec4<f32>(0.0);
+    let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
+    surfel_normal[id] = vec4<f32>(normal, 1.0);
+    surfel_irradiance[id] = vec4<f32>(0.0);
 }
 
 

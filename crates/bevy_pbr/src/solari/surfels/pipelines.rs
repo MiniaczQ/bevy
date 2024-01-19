@@ -1,7 +1,7 @@
 use super::{view_resources::create_bind_group_layout, SurfelsSettings};
 use crate::solari::{
     scene::SolariSceneBindGroupLayout,
-    surfels::{SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_SPAWN},
+    surfels::{SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_PRESPAWN, SURFELS_SHADER_SPAWN},
 };
 use bevy_core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy_ecs::{
@@ -18,6 +18,7 @@ use bevy_render::render_resource::{
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum SurfelsKey {
+    ApproximateSpawns,
     SpawnSurfels,
     SurfelsDiffuse,
     DebugSurfels,
@@ -27,16 +28,19 @@ pub enum SurfelsKey {
 #[derive(Resource)]
 pub struct SurfelsPipelines {
     pub scene_bind_group_layout: BindGroupLayout,
+    pub view_bind_group_layout_with_surfels_to_allocate: BindGroupLayout,
     pub view_bind_group_layout: BindGroupLayout,
 }
 
 impl FromWorld for SurfelsPipelines {
     fn from_world(world: &mut World) -> Self {
         let scene_bind_group_layout = world.resource::<SolariSceneBindGroupLayout>();
-        let view_bind_group_layout = create_bind_group_layout(world.resource());
+        let (view_bind_group_layout_with_surfels_to_allocate, view_bind_group_layout) =
+            create_bind_group_layout(world.resource());
 
         Self {
             scene_bind_group_layout: scene_bind_group_layout.0.clone(),
+            view_bind_group_layout_with_surfels_to_allocate,
             view_bind_group_layout,
         }
     }
@@ -49,21 +53,36 @@ impl SpecializedComputePipeline for SurfelsPipelines {
         use SurfelsKey::*;
 
         let push_constant_ranges = vec![];
-        let shader_defs = vec![];
+        let mut shader_defs = vec![];
+        let mut layout = vec![self.scene_bind_group_layout.clone()];
 
         let (entry_point, shader) = match pass {
-            SpawnSurfels => ("spawn_one_surfel", SURFELS_SHADER_SPAWN),
-            SurfelsDiffuse => ("surfels_diffuse", SURFELS_SHADER_DIFFUSE),
-            DebugSurfels => ("surfel_count", SURFELS_SHADER_DIFFUSE),
-            DespawnSurfels => ("despawn_surfels", SURFELS_SHADER_DESPAWN),
+            ApproximateSpawns => {
+                shader_defs.push("SURFELS_TO_ALLOCATE_ENABLED".into());
+                layout.push(self.view_bind_group_layout_with_surfels_to_allocate.clone());
+                ("approximate_spawns", SURFELS_SHADER_PRESPAWN)
+            }
+            SpawnSurfels => {
+                layout.push(self.view_bind_group_layout.clone());
+                ("spawn_one_surfel", SURFELS_SHADER_SPAWN)
+            }
+            SurfelsDiffuse => {
+                layout.push(self.view_bind_group_layout.clone());
+                ("surfels_diffuse", SURFELS_SHADER_DIFFUSE)
+            }
+            DebugSurfels => {
+                layout.push(self.view_bind_group_layout.clone());
+                ("surfel_count", SURFELS_SHADER_DIFFUSE)
+            }
+            DespawnSurfels => {
+                layout.push(self.view_bind_group_layout.clone());
+                ("despawn_surfels", SURFELS_SHADER_DESPAWN)
+            }
         };
 
         ComputePipelineDescriptor {
             label: Some(format!("surfels_{entry_point}_pipeline").into()),
-            layout: vec![
-                self.scene_bind_group_layout.clone(),
-                self.view_bind_group_layout.clone(),
-            ],
+            layout,
             push_constant_ranges,
             shader,
             shader_defs,
@@ -74,6 +93,7 @@ impl SpecializedComputePipeline for SurfelsPipelines {
 
 #[derive(Component)]
 pub struct SurfelsPipelineIds {
+    pub approximate_spawns: CachedComputePipelineId,
     pub spawn_surfels: CachedComputePipelineId,
     pub surfels_diffuse: CachedComputePipelineId,
     pub debug_surfels: CachedComputePipelineId,
@@ -101,6 +121,7 @@ pub fn prepare_pipelines(
 
     for entity in &views {
         commands.entity(entity).insert(SurfelsPipelineIds {
+            approximate_spawns: create_pipeline(ApproximateSpawns),
             spawn_surfels: create_pipeline(SpawnSurfels),
             surfels_diffuse: create_pipeline(SurfelsDiffuse),
             debug_surfels: create_pipeline(DebugSurfels),

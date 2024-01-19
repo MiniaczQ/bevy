@@ -11,6 +11,7 @@
 const MAX_SURFELS: u32 = 1024u;
 const SURFEL_MAP_BITS: u32 = 32u;
 const INVALID_SURFEL_ID: u32 = 4294967295u;
+const MAX_SPAWNS: u32 = 64u;
 
 @group(1) @binding(3) var<storage, read_write> unallocated_surfel_ids_stack: array<u32, MAX_SURFELS>;
 @group(1) @binding(4) var<storage, read_write> allocated_surfels_bitmap: array<atomic<u32>, SURFEL_MAP_BITS>;
@@ -24,6 +25,10 @@ const INVALID_SURFEL_ID: u32 = 4294967295u;
 // Output
 @group(1) @binding(9) var diffuse_irradiance_output: texture_storage_2d<rgba16float, write>;
 
+@group(1) @binding(10) var<storage, read_write> surfel_grid_allocate: array<array<u32, 16>, 16>;
+#ifdef SURFELS_TO_ALLOCATE_ENABLED
+@group(1) @binding(11) var<storage, read_write> surfels_to_allocate: vec3<u32>;
+#endif
 
 
 // Pops unallocated stack and enables surfel in the map
