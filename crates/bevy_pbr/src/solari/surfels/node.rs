@@ -78,7 +78,7 @@ impl ViewNode for SurfelsNode {
         surfels_pass.push_debug_group("spawn_surfels");
         surfels_pass.set_pipeline(approximate_spawns_pipeline);
         surfels_pass.dispatch_workgroups(1, 1, 1);
-        
+
         surfels_pass.set_bind_group(
             1,
             &bind_groups.view_bind_group,
@@ -93,10 +93,10 @@ impl ViewNode for SurfelsNode {
         surfels_pass.dispatch_workgroups((viewport_size.x + 7) / 8, (viewport_size.y + 7) / 8, 1);
         surfels_pass.pop_debug_group();
 
-        surfels_pass.push_debug_group("debug");
-        surfels_pass.set_pipeline(debug_surfels_pipeline);
-        surfels_pass.dispatch_workgroups(1, 1, 1);
-        surfels_pass.pop_debug_group();
+        //surfels_pass.push_debug_group("debug");
+        //surfels_pass.set_pipeline(debug_surfels_pipeline);
+        //surfels_pass.dispatch_workgroups(1, 1, 1);
+        //surfels_pass.pop_debug_group();
 
         surfels_pass.push_debug_group("despawn_surfels");
         surfels_pass.set_pipeline(despawn_surfels_pipeline);
