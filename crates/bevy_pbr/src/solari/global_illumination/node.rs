@@ -149,7 +149,7 @@ impl ViewNode for SolariGlobalIlluminationNode {
 
         solari_pass.set_pipeline(screen_probes_interpolate_pipeline);
         solari_pass.dispatch_workgroups((viewport_size.x + 7) / 8, (viewport_size.y + 7) / 8, 1);
-
+        
         drop(solari_pass);
 
         // TODO: Should double buffer instead of copying

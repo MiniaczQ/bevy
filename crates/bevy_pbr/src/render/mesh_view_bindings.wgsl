@@ -33,28 +33,21 @@
 @group(0) @binding(10) var<uniform> fog: types::Fog;
 
 @group(0) @binding(11) var screen_space_ambient_occlusion_texture: texture_2d<f32>;
+@group(0) @binding(12) var surfels_diffuse_texture: texture_2d<f32>;
 
-const MAX_SURFELS: u32 = 1024u;
-const SURFEL_MAP_BITS: u32 = 32u;
+@group(0) @binding(13) var environment_map_diffuse: texture_cube<f32>;
+@group(0) @binding(14) var environment_map_specular: texture_cube<f32>;
+@group(0) @binding(15) var environment_map_sampler: sampler;
 
-@group(0) @binding(12) var<storage, read_write> allocated_surfels_bitmap: array<u32, SURFEL_MAP_BITS>;
-@group(0) @binding(13) var<storage, read_write> allocated_surfel_ids_count: atomic<u32>;
-@group(0) @binding(14) var<storage, read_write> surfel_position: array<vec4<f32>, MAX_SURFELS>;
-@group(0) @binding(15) var<storage, read_write> surfel_irradiance: array<vec4<f32>, MAX_SURFELS>;
-
-@group(0) @binding(16) var environment_map_diffuse: texture_cube<f32>;
-@group(0) @binding(17) var environment_map_specular: texture_cube<f32>;
-@group(0) @binding(18) var environment_map_sampler: sampler;
-
-@group(0) @binding(19) var dt_lut_texture: texture_3d<f32>;
-@group(0) @binding(20) var dt_lut_sampler: sampler;
+@group(0) @binding(16) var dt_lut_texture: texture_3d<f32>;
+@group(0) @binding(17) var dt_lut_sampler: sampler;
 
 #ifdef MULTISAMPLED
-@group(0) @binding(21) var depth_prepass_texture: texture_depth_multisampled_2d;
-@group(0) @binding(22) var normal_prepass_texture: texture_multisampled_2d<f32>;
-@group(0) @binding(23) var motion_vector_prepass_texture: texture_multisampled_2d<f32>;
+@group(0) @binding(18) var depth_prepass_texture: texture_depth_multisampled_2d;
+@group(0) @binding(19) var normal_prepass_texture: texture_multisampled_2d<f32>;
+@group(0) @binding(20) var motion_vector_prepass_texture: texture_multisampled_2d<f32>;
 #else
-@group(0) @binding(21) var depth_prepass_texture: texture_depth_2d;
-@group(0) @binding(22) var normal_prepass_texture: texture_2d<f32>;
-@group(0) @binding(23) var motion_vector_prepass_texture: texture_2d<f32>;
+@group(0) @binding(18) var depth_prepass_texture: texture_depth_2d;
+@group(0) @binding(19) var normal_prepass_texture: texture_2d<f32>;
+@group(0) @binding(20) var motion_vector_prepass_texture: texture_2d<f32>;
 #endif

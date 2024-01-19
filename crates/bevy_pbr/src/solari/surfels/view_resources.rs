@@ -1,19 +1,25 @@
 use super::{SurfelsPipelines, SurfelsSettings, MAX_SURFELS};
-use bevy_core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
+use bevy_core_pipeline::prepass::{
+    DepthPrepass, MotionVectorPrepass, NormalPrepass, ViewPrepassTextures,
+};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
     query::With,
     system::{Commands, Query, Res, ResMut},
 };
+use bevy_math::UVec2;
 use bevy_render::{
     camera::ExtractedCamera,
     render_resource::{
         BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
         BindGroupLayoutEntry, BindingResource, BindingType, BufferBindingType, BufferCache,
-        BufferDescriptor, BufferUsages, CachedBuffer, ShaderStages, ShaderType,
+        BufferDescriptor, BufferUsages, CachedBuffer, Extent3d, ShaderStages, ShaderType,
+        StorageTextureAccess, TextureDescriptor, TextureDimension, TextureFormat,
+        TextureSampleType, TextureUsages, TextureViewDimension,
     },
     renderer::{RenderDevice, RenderQueue},
+    texture::{CachedTexture, TextureCache},
     view::{ViewUniform, ViewUniforms},
 };
 use std::num::NonZeroU64;
@@ -21,18 +27,18 @@ use std::num::NonZeroU64;
 #[derive(Component)]
 pub struct SurfelsViewResources {
     unallocated_surfel_ids_stack: CachedBuffer,
-    pub allocated_surfels_bitmap: CachedBuffer,
-    pub allocated_surfel_ids_count: CachedBuffer,
-    pub surfel_position: CachedBuffer,
+    allocated_surfels_bitmap: CachedBuffer,
+    allocated_surfel_ids_count: CachedBuffer,
+    surfel_position: CachedBuffer,
     surfel_normal: CachedBuffer,
-    pub surfel_irradiance: CachedBuffer,
+    surfel_irradiance: CachedBuffer,
+    pub diffuse_irradiance_output: CachedTexture,
 }
 
 pub fn prepare_resources(
     views: Query<
-        Entity,
+        (Entity, &ExtractedCamera),
         (
-            With<ExtractedCamera>,
             With<SurfelsSettings>,
             With<DepthPrepass>,
             With<NormalPrepass>,
@@ -41,9 +47,24 @@ pub fn prepare_resources(
     >,
     mut commands: Commands,
     mut buffer_cache: ResMut<BufferCache>,
+    mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
+    let texture = |label, format, size: UVec2| TextureDescriptor {
+        label: Some(label),
+        size: Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format,
+        usage: TextureUsages::STORAGE_BINDING,
+        view_formats: &[],
+    };
     let buffer = |label, size| BufferDescriptor {
         label: Some(label),
         size,
@@ -51,7 +72,10 @@ pub fn prepare_resources(
         mapped_at_creation: false,
     };
 
-    for entity in &views {
+    for (entity, camera) in &views {
+        let Some(viewport_size) = camera.physical_viewport_size else {
+            continue;
+        };
         let mut unallocated_surfel_ids_stack =
             buffer("unallocated_surfel_ids_stack", 4 * MAX_SURFELS);
         unallocated_surfel_ids_stack.usage |= BufferUsages::COPY_DST;
@@ -60,6 +84,12 @@ pub fn prepare_resources(
         let surfel_position = buffer("surfel_position", 16 * MAX_SURFELS);
         let surfel_normal = buffer("surfel_normal", 16 * MAX_SURFELS);
         let surfel_irradiance = buffer("surfel_irradiance", 16 * MAX_SURFELS);
+        let mut diffuse_irradiance_output = texture(
+            "diffuse_irradiance_output",
+            TextureFormat::Rgba16Float,
+            viewport_size,
+        );
+        diffuse_irradiance_output.usage |= TextureUsages::TEXTURE_BINDING;
 
         commands.entity(entity).insert(SurfelsViewResources {
             unallocated_surfel_ids_stack: buffer_cache.get_or(
@@ -78,6 +108,7 @@ pub fn prepare_resources(
             surfel_position: buffer_cache.get(&render_device, surfel_position),
             surfel_normal: buffer_cache.get(&render_device, surfel_normal),
             surfel_irradiance: buffer_cache.get(&render_device, surfel_irradiance),
+            diffuse_irradiance_output: texture_cache.get(&render_device, diffuse_irradiance_output),
         });
     }
 }
@@ -100,6 +131,18 @@ pub fn create_bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout
             ty: BufferBindingType::Uniform,
             has_dynamic_offset: true,
             min_binding_size: Some(ViewUniform::min_size()),
+        }),
+        // Depth buffer
+        entry(BindingType::Texture {
+            sample_type: TextureSampleType::Depth,
+            view_dimension: TextureViewDimension::D2,
+            multisampled: false,
+        }),
+        // Normals buffer
+        entry(BindingType::Texture {
+            sample_type: TextureSampleType::Float { filterable: false },
+            view_dimension: TextureViewDimension::D2,
+            multisampled: false,
         }),
         // unallocated_surfel_ids_stack
         entry(BindingType::Buffer {
@@ -137,6 +180,12 @@ pub fn create_bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout
             has_dynamic_offset: false,
             min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(16) }),
         }),
+        // diffuse_irradiance_output
+        entry(BindingType::StorageTexture {
+            access: StorageTextureAccess::WriteOnly,
+            format: TextureFormat::Rgba16Float,
+            view_dimension: TextureViewDimension::D2,
+        }),
     ];
 
     render_device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -151,7 +200,7 @@ pub struct SurfelsBindGroups {
 }
 
 pub(crate) fn prepare_bind_groups(
-    views: Query<(Entity, &SurfelsViewResources)>,
+    views: Query<(Entity, &SurfelsViewResources, &ViewPrepassTextures)>,
     view_uniforms: Res<ViewUniforms>,
     pipelines: Res<SurfelsPipelines>,
     mut commands: Commands,
@@ -161,7 +210,7 @@ pub(crate) fn prepare_bind_groups(
         return;
     };
 
-    for (entity, surfels_res) in &views {
+    for (entity, surfels_res, prepass_textures) in &views {
         let mut entry_i = 0;
         let mut entry = |resource| {
             entry_i += 1;
@@ -173,12 +222,15 @@ pub(crate) fn prepare_bind_groups(
 
         let entries = &[
             entry(view_uniforms.clone()),
+            entry(t(prepass_textures.depth.as_ref().unwrap())),
+            entry(t(prepass_textures.normal.as_ref().unwrap())),
             entry(b(&surfels_res.unallocated_surfel_ids_stack)),
             entry(b(&surfels_res.allocated_surfels_bitmap)),
             entry(b(&surfels_res.allocated_surfel_ids_count)),
             entry(b(&surfels_res.surfel_position)),
             entry(b(&surfels_res.surfel_normal)),
             entry(b(&surfels_res.surfel_irradiance)),
+            entry(t(&surfels_res.diffuse_irradiance_output)),
         ];
 
         let bind_groups = SurfelsBindGroups {
@@ -190,6 +242,10 @@ pub(crate) fn prepare_bind_groups(
         };
         commands.entity(entity).insert(bind_groups);
     }
+}
+
+fn t(texture: &CachedTexture) -> BindingResource<'_> {
+    BindingResource::TextureView(&texture.default_view)
 }
 
 fn b(buffer: &CachedBuffer) -> BindingResource<'_> {

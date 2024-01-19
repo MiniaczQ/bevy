@@ -1,7 +1,7 @@
 use super::{view_resources::create_bind_group_layout, SurfelsSettings};
 use crate::solari::{
     scene::SolariSceneBindGroupLayout,
-    surfels::{SURFELS_SHADER_DESPAWN, SURFELS_SHADER_SPAWN},
+    surfels::{SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_SPAWN},
 };
 use bevy_core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy_ecs::{
@@ -19,6 +19,8 @@ use bevy_render::render_resource::{
 #[derive(PartialEq, Eq, Hash, Clone, Copy)]
 pub enum SurfelsKey {
     SpawnSurfels,
+    SurfelsDiffuse,
+    DebugSurfels,
     DespawnSurfels,
 }
 
@@ -51,6 +53,8 @@ impl SpecializedComputePipeline for SurfelsPipelines {
 
         let (entry_point, shader) = match pass {
             SpawnSurfels => ("spawn_one_surfel", SURFELS_SHADER_SPAWN),
+            SurfelsDiffuse => ("surfels_diffuse", SURFELS_SHADER_DIFFUSE),
+            DebugSurfels => ("surfel_count", SURFELS_SHADER_DIFFUSE),
             DespawnSurfels => ("despawn_surfels", SURFELS_SHADER_DESPAWN),
         };
 
@@ -71,6 +75,8 @@ impl SpecializedComputePipeline for SurfelsPipelines {
 #[derive(Component)]
 pub struct SurfelsPipelineIds {
     pub spawn_surfels: CachedComputePipelineId,
+    pub surfels_diffuse: CachedComputePipelineId,
+    pub debug_surfels: CachedComputePipelineId,
     pub despawn_surfels: CachedComputePipelineId,
 }
 
@@ -96,6 +102,8 @@ pub fn prepare_pipelines(
     for entity in &views {
         commands.entity(entity).insert(SurfelsPipelineIds {
             spawn_surfels: create_pipeline(SpawnSurfels),
+            surfels_diffuse: create_pipeline(SurfelsDiffuse),
+            debug_surfels: create_pipeline(DebugSurfels),
             despawn_surfels: create_pipeline(DespawnSurfels),
         });
     }

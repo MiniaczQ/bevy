@@ -1,17 +1,14 @@
-#import surfels::view_bindings allocate_surfel, view, allocated_surfel_ids_count, surfel_position, surfel_normal, surfel_irradiance, INVALID_SURFEL_ID
+#import surfels::view_bindings allocate_surfel, view, allocated_surfel_ids_count, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID
 #import bevy_solari::scene_bindings uniforms, map_ray_hit
-#import surfels::utils trace_ray, rand_vec2f, rand_f
+#import surfels::utils trace_ray, rand_vec2f, rand_f, depth_to_world_position
 
-@compute @workgroup_size(1)
-fn spawn_one_surfel() {
-    var rng = uniforms.frame_count;
-    let target_pos2d = rand_vec2f(&rng) * 2.0 - vec2<f32>(1.0);
-    let target_pos = vec4<f32>(target_pos2d.x, target_pos2d.y, 0.1, 1.0);
-    let world_target_pos = view.inverse_view_proj * target_pos;
-    let direction = normalize(world_target_pos.xyz / world_target_pos.w - view.world_position);
-
-    let ray_hit = trace_ray(view.world_position, direction, 0.1, 10000.0);
-    if ray_hit.kind == RAY_QUERY_INTERSECTION_NONE {
+@compute @workgroup_size(64)
+fn spawn_one_surfel(@builtin(local_invocation_index) local_index: u32) {
+    var rng = uniforms.frame_count * 64u + local_index;
+    let screen_uv = rand_vec2f(&rng);
+    let pixel_uv = vec2<u32>(screen_uv * view.viewport.zw);
+    let clip_z = textureLoad(depth_buffer, pixel_uv, 0i);
+    if(clip_z == 0.0) {
         // Miss
         return;
     }
@@ -22,8 +19,26 @@ fn spawn_one_surfel() {
         return;
     }
 
-    let ray_hit_scene = map_ray_hit(ray_hit);
-    surfel_position[id] = vec4<f32>(ray_hit_scene.world_position, 1.0);
-    surfel_normal[id] = vec4<f32>(ray_hit_scene.world_normal, 1.0);
-    surfel_irradiance[id] = vec4<f32>(0.0);
+    let world_xyz = depth_to_world_position(clip_z, screen_uv);
+    //let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
+    surfel_position[id] = vec4<f32>(world_xyz, 1.0);
+    //surfel_normal[id] = vec4<f32>(normal, 1.0);
+    //surfel_irradiance[id] = vec4<f32>(0.0);
 }
+
+
+
+//    old method that uses ray query
+
+//    let clip_xyzw = vec4<f32>(clip_xy, 0.1, 1.0);
+//    let world_xyzw = view.inverse_view_proj * clip_xyzw;
+//    let direction = normalize(world_xyzw.xyz / world_xyzw.w - view.world_position);
+//    let ray_hit = trace_ray(view.world_position, direction, 0.1, 10000.0);
+//    if ray_hit.kind == RAY_QUERY_INTERSECTION_NONE {
+//        // Miss
+//        return;
+//    }
+//    let ray_hit_scene = map_ray_hit(ray_hit);
+//    surfel_position[id] = vec4<f32>(ray_hit_scene.world_position, 1.0);
+//    surfel_normal[id] = vec4<f32>(ray_hit_scene.world_normal, 1.0);
+//    surfel_irradiance[id] = vec4<f32>(0.0);
