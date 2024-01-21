@@ -1,6 +1,7 @@
-#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfels_bitmap, unallocated_surfels, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS, MAX_SURFELS, SurfelIrradiance
+#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfels_bitmap, unallocated_surfels, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, MAX_SPAWNS, MAX_SURFELS, SurfelIrradiance
 #import bevy_solari::scene_bindings uniforms
 #import surfels::utils rand_vec2f, depth_to_world_position
+#import bevy_pbr::utils hsv2rgb
 
 fn allocate_surfel() -> u32 {
     let idx = atomicSub(&unallocated_surfels, 1u) - 1u;
@@ -18,24 +19,15 @@ fn spawn_one_surfel(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let screen_uv = rand_vec2f(&rng);
     let pixel_uv = vec2<u32>(screen_uv * view.viewport.zw);
     let clip_z = textureLoad(depth_buffer, pixel_uv, 0i);
-    if(clip_z == 0.0) {
-        // Miss
-        return;
-    }
+    if(clip_z == 0.0) { return; } // Miss
 
     let world_xyz = depth_to_world_position(clip_z, screen_uv);
-    // Check for closest surfel, fail if too close
-
     let id = allocate_surfel();
-    if id == INVALID_SURFEL_ID {
-        // Out of surfels
-        return;
-    }
-
     surfel_position[id] = vec4<f32>(world_xyz, 1.0);
     let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
     surfel_normal[id] = vec4<f32>(normal, 1.0);
-    surfel_irradiance[id] = SurfelIrradiance(vec3<f32>(0.0), vec3<f32>(0.0), 0u);
+    let color = hsv2rgb(f32(id) / f32(MAX_SURFELS), 1.0, 0.5);
+    surfel_irradiance[id] = SurfelIrradiance(color, vec3<f32>(0.0), 0u);
 }
 
 

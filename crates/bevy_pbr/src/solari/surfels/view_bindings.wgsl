@@ -16,7 +16,6 @@ struct SurfelIrradiance {
 // Surfel stack
 const MAX_SURFELS: u32 = 1024u;
 const SURFEL_MAP_BITS: u32 = 32u;
-const INVALID_SURFEL_ID: u32 = 4294967295u;
 const MAX_SPAWNS: u32 = 64u;
 
 @group(1) @binding(3) var<storage, read_write> unallocated_surfel_ids_stack: array<u32, MAX_SURFELS>;
