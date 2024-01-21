@@ -39,23 +39,21 @@ fn surfels_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let screen_xy = (vec2<f32>(global_id.xy) + 0.5) / view.viewport.zw;
     let world_pos = depth_to_world_position(screen_z, screen_xy);
     let view_dis = distance(view.world_position, world_pos);
-    let affection_dis = view_dis * AFFECTION_RANGE;
     
-    var contributors = 0;
     var lighting = vec3<f32>(0.0);
+    var total_weight = 0.0;
 
     for (var id = 0u; id < MAX_SURFELS; id++) {
         if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { continue; } // Surfel not active
 
         let surfel_pos = surfel_position[id].xyz;
         let surfel_dis = distance(world_pos, surfel_pos);
-        if surfel_dis < affection_dis {
-            contributors += 1;
-            lighting += surfel_irradiance[id].mean;
-        }
+        let weight = max(view_dis * AFFECTION_RANGE - surfel_dis, 0.0);
+        lighting += surfel_irradiance[id].mean * weight;
+        total_weight += weight;
     }
 
-    if contributors > 0 { lighting = lighting / f32(contributors); }
+    if total_weight > 0.0 { lighting = lighting / total_weight; }
     textureStore(diffuse_irradiance_output, global_id.xy, vec4<f32>(lighting, 1.0));
 }
 
