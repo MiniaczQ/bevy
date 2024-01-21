@@ -2,6 +2,12 @@
 
 #import bevy_render::view View
 
+struct SurfelIrradiance {
+    mean: vec3<f32>,
+    mean_squared: vec3<f32>,
+    probes: u32,
+}
+
 // Input
 @group(1) @binding(0) var<uniform> view: View;
 @group(1) @binding(1) var depth_buffer: texture_depth_2d;
@@ -24,7 +30,7 @@ const MAX_SPAWNS: u32 = 64u;
 // Surfel info
 @group(1) @binding(6) var<storage, read_write> surfel_position: array<vec4<f32>, MAX_SURFELS>;
 @group(1) @binding(7) var<storage, read_write> surfel_normal: array<vec4<f32>, MAX_SURFELS>;
-@group(1) @binding(8) var<storage, read_write> surfel_irradiance: array<vec4<f32>, MAX_SURFELS>;
+@group(1) @binding(8) var<storage, read_write> surfel_irradiance: array<SurfelIrradiance, MAX_SURFELS>;
 
 // Output
 @group(1) @binding(9) var diffuse_irradiance_output: texture_storage_2d<rgba16float, write>;

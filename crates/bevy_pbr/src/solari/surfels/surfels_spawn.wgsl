@@ -1,4 +1,4 @@
-#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfels_bitmap, unallocated_surfels, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS, MAX_SURFELS
+#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfels_bitmap, unallocated_surfels, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS, MAX_SURFELS, SurfelIrradiance
 #import bevy_solari::scene_bindings uniforms
 #import surfels::utils rand_vec2f, depth_to_world_position
 
@@ -35,7 +35,7 @@ fn spawn_one_surfel(@builtin(global_invocation_id) global_id: vec3<u32>) {
     surfel_position[id] = vec4<f32>(world_xyz, 1.0);
     let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
     surfel_normal[id] = vec4<f32>(normal, 1.0);
-    surfel_irradiance[id] = vec4<f32>(0.0);
+    surfel_irradiance[id] = SurfelIrradiance(vec3<f32>(0.0), vec3<f32>(0.0), 0u);
 }
 
 

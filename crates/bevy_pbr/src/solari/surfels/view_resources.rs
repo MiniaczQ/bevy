@@ -86,7 +86,7 @@ pub fn prepare_resources(
         unallocated_surfels.usage |= BufferUsages::COPY_DST;
         let surfel_position = buffer("surfel_position", 16 * MAX_SURFELS);
         let surfel_normal = buffer("surfel_normal", 16 * MAX_SURFELS);
-        let surfel_irradiance = buffer("surfel_irradiance", 16 * MAX_SURFELS);
+        let surfel_irradiance = buffer("surfel_irradiance", 32 * MAX_SURFELS);
         let mut diffuse_irradiance_output = texture(
             "diffuse_irradiance_output",
             TextureFormat::Rgba16Float,
@@ -192,7 +192,7 @@ pub fn create_bind_group_layout(
         entry(BindingType::Buffer {
             ty: BufferBindingType::Storage { read_only: false },
             has_dynamic_offset: false,
-            min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(16) }),
+            min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(32) }),
         }),
         // diffuse_irradiance_output
         entry(BindingType::StorageTexture {
