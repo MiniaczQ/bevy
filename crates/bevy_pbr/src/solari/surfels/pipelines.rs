@@ -3,7 +3,7 @@ use crate::solari::{
     scene::SolariSceneBindGroupLayout,
     surfels::{
         SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_PRESPAWN,
-        SURFELS_SHADER_SPAWN,
+        SURFELS_SHADER_SPAWN, SURFELS_SHADER_UPDATE,
     },
 };
 use bevy_core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
@@ -23,6 +23,7 @@ use bevy_render::render_resource::{
 pub enum SurfelsKey {
     ApproximateSpawns,
     SpawnSurfels,
+    UpdateSurfels,
     SurfelsDiffuse,
     DebugSurfels,
     DespawnSurfels,
@@ -70,6 +71,10 @@ impl SpecializedComputePipeline for SurfelsPipelines {
                 layout.push(self.view_bind_group_layout.clone());
                 ("spawn_one_surfel", SURFELS_SHADER_SPAWN)
             }
+            UpdateSurfels => {
+                layout.push(self.view_bind_group_layout.clone());
+                ("surfels_update", SURFELS_SHADER_UPDATE)
+            }
             SurfelsDiffuse => {
                 layout.push(self.view_bind_group_layout.clone());
                 ("surfels_diffuse", SURFELS_SHADER_DIFFUSE)
@@ -99,6 +104,7 @@ impl SpecializedComputePipeline for SurfelsPipelines {
 pub struct SurfelsPipelineIds {
     pub approximate_spawns: CachedComputePipelineId,
     pub spawn_surfels: CachedComputePipelineId,
+    pub update_diffuse: CachedComputePipelineId,
     pub surfels_diffuse: CachedComputePipelineId,
     pub debug_surfels: CachedComputePipelineId,
     pub despawn_surfels: CachedComputePipelineId,
@@ -127,6 +133,7 @@ pub fn prepare_pipelines(
         commands.entity(entity).insert(SurfelsPipelineIds {
             approximate_spawns: create_pipeline(ApproximateSpawns),
             spawn_surfels: create_pipeline(SpawnSurfels),
+            update_diffuse: create_pipeline(UpdateSurfels),
             surfels_diffuse: create_pipeline(SurfelsDiffuse),
             debug_surfels: create_pipeline(DebugSurfels),
             despawn_surfels: create_pipeline(DespawnSurfels),

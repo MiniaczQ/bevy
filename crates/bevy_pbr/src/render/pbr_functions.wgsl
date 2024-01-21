@@ -271,6 +271,12 @@ fn pbr(
 
     let emissive_light = emissive.rgb * output_color.a;
 
+#ifdef GLOBAL_ILLUMINATION
+    let gi = textureLoad(view_bindings::surfels_diffuse_texture, vec2<i32>(in.frag_coord.xy), 0);
+
+    indirect_light += gi.rgb * (diffuse_color / PI);
+#endif
+
     // Total light
     output_color = vec4<f32>(
         direct_light + indirect_light + emissive_light,
@@ -286,13 +292,13 @@ fn pbr(
     );
 
 #ifdef GLOBAL_ILLUMINATION
-    let gi = textureLoad(view_bindings::surfels_diffuse_texture, vec2<i32>(in.frag_coord.xy), 0);
+    //let gi = textureLoad(view_bindings::surfels_diffuse_texture, vec2<i32>(in.frag_coord.xy), 0);
 
-    if gi.a == 1.0 {
-        output_color = gi;
-    }
+    //if gi.a == 1.0 {
+    //    output_color = gi;
+    //}
 
-    //indirect_light += gi.xyz * (diffuse_color / PI);
+    //indirect_light += gi.rgb * (diffuse_color / PI);
 #endif
 
     return output_color;

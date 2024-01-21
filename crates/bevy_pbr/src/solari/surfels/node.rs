@@ -47,12 +47,14 @@ impl ViewNode for SurfelsNode {
         let (
             Some(approximate_spawns_pipeline),
             Some(spawn_surfels_pipeline),
+            Some(surfels_update_pipeline),
             Some(surfels_diffuse_pipeline),
             Some(debug_surfels_pipeline),
             Some(despawn_surfels_pipeline),
         ) = (
             pipeline_cache.get_compute_pipeline(pipeline_ids.approximate_spawns),
             pipeline_cache.get_compute_pipeline(pipeline_ids.spawn_surfels),
+            pipeline_cache.get_compute_pipeline(pipeline_ids.update_diffuse),
             pipeline_cache.get_compute_pipeline(pipeline_ids.surfels_diffuse),
             pipeline_cache.get_compute_pipeline(pipeline_ids.debug_surfels),
             pipeline_cache.get_compute_pipeline(pipeline_ids.despawn_surfels),
@@ -86,6 +88,11 @@ impl ViewNode for SurfelsNode {
         );
         surfels_pass.set_pipeline(spawn_surfels_pipeline);
         surfels_pass.dispatch_workgroups_indirect(&surfel_res.surfels_to_allocate.buffer, 0);
+        surfels_pass.pop_debug_group();
+
+        surfels_pass.push_debug_group("surfels_update");
+        surfels_pass.set_pipeline(surfels_update_pipeline);
+        surfels_pass.dispatch_workgroups(1, 1, 1);
         surfels_pass.pop_debug_group();
 
         surfels_pass.push_debug_group("surfels_diffuse");

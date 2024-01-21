@@ -26,7 +26,8 @@ fn spawn_one_surfel(@builtin(global_invocation_id) global_id: vec3<u32>) {
     surfel_position[id] = vec4<f32>(world_xyz, 1.0);
     let normal = normalize(textureLoad(normals_buffer, pixel_uv, 0i).xyz * 2.0 - 1.0);
     surfel_normal[id] = vec4<f32>(normal, 1.0);
-    let color = hsv2rgb(f32(id) / f32(MAX_SURFELS), 1.0, 0.5);
+    //let color = hsv2rgb(f32(id) / f32(MAX_SURFELS), 1.0, 0.5);
+    let color = vec3<f32>(0.0);
     surfel_irradiance[id] = SurfelIrradiance(color, vec3<f32>(0.0), 0u);
 }
 

@@ -42,7 +42,6 @@ fn surfels_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     
     var lighting = vec3<f32>(0.0);
     var total_weight = 0.0;
-
     for (var id = 0u; id < MAX_SURFELS; id++) {
         if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { continue; } // Surfel not active
 
