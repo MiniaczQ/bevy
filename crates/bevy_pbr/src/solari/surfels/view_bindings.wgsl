@@ -19,7 +19,7 @@ const MAX_SPAWNS: u32 = 64u;
 #else
 @group(1) @binding(4) var<storage, read_write> allocated_surfels_bitmap: array<u32, SURFEL_MAP_BITS>;
 #endif
-@group(1) @binding(5) var<storage, read_write> allocated_surfel_ids_count: atomic<u32>;
+@group(1) @binding(5) var<storage, read_write> unallocated_surfels: atomic<u32>;
 
 // Surfel info
 @group(1) @binding(6) var<storage, read_write> surfel_position: array<vec4<f32>, MAX_SURFELS>;

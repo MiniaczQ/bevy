@@ -28,7 +28,7 @@ use std::num::NonZeroU64;
 pub struct SurfelsViewResources {
     unallocated_surfel_ids_stack: CachedBuffer,
     allocated_surfels_bitmap: CachedBuffer,
-    allocated_surfel_ids_count: CachedBuffer,
+    unallocated_surfels: CachedBuffer,
     surfel_position: CachedBuffer,
     surfel_normal: CachedBuffer,
     surfel_irradiance: CachedBuffer,
@@ -82,7 +82,8 @@ pub fn prepare_resources(
             buffer("unallocated_surfel_ids_stack", 4 * MAX_SURFELS);
         unallocated_surfel_ids_stack.usage |= BufferUsages::COPY_DST;
         let allocated_surfels_bitmap = buffer("allocated_surfels_bitmap", 4 * MAX_SURFELS / 32);
-        let allocated_surfel_ids_count = buffer("allocated_surfel_ids_count", 4);
+        let mut unallocated_surfels = buffer("unallocated_surfels", 4);
+        unallocated_surfels.usage |= BufferUsages::COPY_DST;
         let surfel_position = buffer("surfel_position", 16 * MAX_SURFELS);
         let surfel_normal = buffer("surfel_normal", 16 * MAX_SURFELS);
         let surfel_irradiance = buffer("surfel_irradiance", 16 * MAX_SURFELS);
@@ -108,8 +109,12 @@ pub fn prepare_resources(
                 },
             ),
             allocated_surfels_bitmap: buffer_cache.get(&render_device, allocated_surfels_bitmap),
-            allocated_surfel_ids_count: buffer_cache
-                .get(&render_device, allocated_surfel_ids_count),
+            unallocated_surfels: buffer_cache.get_or(
+                &render_device,
+                unallocated_surfels,
+                &render_queue,
+                || (MAX_SURFELS as u32).to_le_bytes().to_vec(),
+            ),
             surfel_position: buffer_cache.get(&render_device, surfel_position),
             surfel_normal: buffer_cache.get(&render_device, surfel_normal),
             surfel_irradiance: buffer_cache.get(&render_device, surfel_irradiance),
@@ -165,7 +170,7 @@ pub fn create_bind_group_layout(
             has_dynamic_offset: false,
             min_binding_size: Some(unsafe { NonZeroU64::new_unchecked(4) }),
         }),
-        // allocated_surfel_ids_count
+        // unallocated_surfels
         entry(BindingType::Buffer {
             ty: BufferBindingType::Storage { read_only: false },
             has_dynamic_offset: false,
@@ -254,7 +259,7 @@ pub(crate) fn prepare_bind_groups(
             entry(t(prepass_textures.normal.as_ref().unwrap())),
             entry(b(&surfels_res.unallocated_surfel_ids_stack)),
             entry(b(&surfels_res.allocated_surfels_bitmap)),
-            entry(b(&surfels_res.allocated_surfel_ids_count)),
+            entry(b(&surfels_res.unallocated_surfels)),
             entry(b(&surfels_res.surfel_position)),
             entry(b(&surfels_res.surfel_normal)),
             entry(b(&surfels_res.surfel_irradiance)),

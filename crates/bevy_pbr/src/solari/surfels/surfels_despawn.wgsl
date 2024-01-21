@@ -1,7 +1,7 @@
-#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfel_ids_count, allocated_surfels_bitmap, surfel_position, MAX_SURFELS
+#import surfels::view_bindings view, unallocated_surfel_ids_stack, unallocated_surfels, allocated_surfels_bitmap, surfel_position, MAX_SURFELS
 
 fn deallocate_surfel(id: u32) {
-    let idx = atomicSub(&allocated_surfel_ids_count, 1u) - 1u; // value post operation
+    let idx = atomicAdd(&unallocated_surfels, 1u);
     unallocated_surfel_ids_stack[idx] = id;
 
     let bin = id / 32u;
