@@ -1,7 +1,10 @@
 use super::{view_resources::create_bind_group_layout, SurfelsSettings};
 use crate::solari::{
     scene::SolariSceneBindGroupLayout,
-    surfels::{SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_PRESPAWN, SURFELS_SHADER_SPAWN},
+    surfels::{
+        SURFELS_SHADER_DESPAWN, SURFELS_SHADER_DIFFUSE, SURFELS_SHADER_PRESPAWN,
+        SURFELS_SHADER_SPAWN,
+    },
 };
 use bevy_core_pipeline::prepass::{DepthPrepass, MotionVectorPrepass, NormalPrepass};
 use bevy_ecs::{
@@ -58,11 +61,12 @@ impl SpecializedComputePipeline for SurfelsPipelines {
 
         let (entry_point, shader) = match pass {
             ApproximateSpawns => {
-                shader_defs.push("SURFELS_TO_ALLOCATE_ENABLED".into());
+                shader_defs.extend_from_slice(&["SURFELS_TO_ALLOCATE_ENABLED".into()]);
                 layout.push(self.view_bind_group_layout_with_surfels_to_allocate.clone());
                 ("approximate_spawns", SURFELS_SHADER_PRESPAWN)
             }
             SpawnSurfels => {
+                shader_defs.extend_from_slice(&["ATOMIC_SURFEL_MAP_ENABLED".into()]);
                 layout.push(self.view_bind_group_layout.clone());
                 ("spawn_one_surfel", SURFELS_SHADER_SPAWN)
             }

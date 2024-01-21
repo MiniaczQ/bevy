@@ -1,6 +1,21 @@
-#import surfels::view_bindings allocate_surfel, view, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS
+#import surfels::view_bindings view, unallocated_surfel_ids_stack, allocated_surfels_bitmap, allocated_surfel_ids_count, surfel_position, surfel_normal, surfel_irradiance, depth_buffer, normals_buffer, INVALID_SURFEL_ID, MAX_SPAWNS, MAX_SURFELS
 #import bevy_solari::scene_bindings uniforms
 #import surfels::utils rand_vec2f, depth_to_world_position
+
+fn allocate_surfel() -> u32 {
+    let idx = atomicAdd(&allocated_surfel_ids_count, 1u); // value pre operation
+    if idx >= MAX_SURFELS {
+        // Exceeded stack size, abort allocation
+        atomicSub(&allocated_surfel_ids_count, 1u);
+        return INVALID_SURFEL_ID;
+    }
+    let id = unallocated_surfel_ids_stack[idx];
+
+    let bin = id / 32u;
+    let bit = id % 32u;
+    atomicOr(&allocated_surfels_bitmap[bin], (1u << bit));
+    return id;
+}
 
 @compute @workgroup_size(1)
 fn spawn_one_surfel(@builtin(global_invocation_id) global_id: vec3<u32>) {

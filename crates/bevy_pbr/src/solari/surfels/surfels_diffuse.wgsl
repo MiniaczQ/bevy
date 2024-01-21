@@ -15,7 +15,7 @@ fn surfels_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let radius = view_distance * SCALE;
     
     for (var id = 0u; id < MAX_SURFELS; id++) {
-        if (atomicLoad(&allocated_surfels_bitmap[id / 32u]) & (1u << (id % 32u))) == 0u {
+        if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u {
             // Surfel not active
             continue;
         }
@@ -40,7 +40,7 @@ fn surfel_count() {
             let screen_xy = vec2<u32>(x, y);
             let id = x * sy + y;
             var color = vec4<f32>(0.0);
-            if (atomicLoad(&allocated_surfels_bitmap[id / 32u]) & (1u << (id % 32u))) != 0u {
+            if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) != 0u {
                 color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
             }
             for(var ox = 0u; ox < size; ox++) {
