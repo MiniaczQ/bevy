@@ -25,7 +25,13 @@ fn main() {
         )
         .add_systems(
             Update,
-            (toggle_solari, camera_controller, update_sun_direction)
+            (
+                toggle_solari,
+                camera_controller,
+                update_sun_direction,
+                toggle_central_light,
+            )
+                .chain()
                 .run_if(resource_exists::<SolariSupported>()),
         )
         .run();
@@ -44,7 +50,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(PointLightBundle {
         point_light: PointLight {
             color: Color::WHITE,
-            intensity: 30.0,
+            intensity: 0.0,
             range: 100.0,
             radius: 0.1,
             shadows_enabled: false,
@@ -149,6 +155,22 @@ fn update_sun_direction(
                 -FRAC_PI_4,
             );
         }
+    }
+}
+
+fn toggle_central_light(
+    key_input: Res<Input<KeyCode>>,
+    mut query: Query<&mut PointLight>,
+    mut enabled: Local<bool>,
+) {
+    if key_input.just_pressed(KeyCode::C) {
+        *enabled = !*enabled;
+
+        let mut light = query.single_mut();
+        match *enabled {
+            true => light.intensity = 30.0,
+            false => light.intensity = 0.0,
+        };
     }
 }
 
