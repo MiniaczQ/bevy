@@ -41,6 +41,19 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            color: Color::WHITE,
+            intensity: 30.0,
+            range: 100.0,
+            radius: 0.1,
+            shadows_enabled: false,
+            ..default()
+        },
+        transform: Transform::from_xyz(0.0, 0.9, 0.0),
+        ..default()
+    });
+
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
             shadows_enabled: true,

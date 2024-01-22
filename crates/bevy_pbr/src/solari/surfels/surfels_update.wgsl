@@ -15,8 +15,6 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
         var rng = uniforms.frame_count * MAX_SURFELS + local_idx;
         var irradiance = vec3<f32>(0.0);
 
-        irradiance += sample_direct_lighting(surfel_pos, surfel_nor, &rng);
-
         let ray_dir = sample_cosine_hemisphere(surfel_nor, &rng);
         let ray_hit = trace_ray(surfel_pos, ray_dir, 0.001, 100.0);
         if ray_hit.kind != RAY_QUERY_INTERSECTION_NONE {
@@ -25,6 +23,9 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
             let solari_ray_hit = map_ray_hit(ray_hit);
 
             var lighting = vec3<f32>(0.0);
+
+            let direct_lighting = sample_direct_lighting(hit_pos, solari_ray_hit.world_normal, &rng);
+
             var total_weight = 0.000001;
             for (var id = 0u; id < MAX_SURFELS; id++) {
                 if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { continue; } // Surfel not active
@@ -37,8 +38,7 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
             }
 
             let surfel_illu = lighting / total_weight;
-            let attenuation = (1.0 + hit_dis) * (1.0 + hit_dis);
-            irradiance += solari_ray_hit.material.base_color * surfel_illu / attenuation;
+            irradiance += solari_ray_hit.material.base_color * (direct_lighting + surfel_illu);
         }
 
         // Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
