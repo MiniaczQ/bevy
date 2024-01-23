@@ -178,6 +178,18 @@ fn sample_direct_lighting(ray_origin: vec3<f32>, origin_world_normal: vec3<f32>,
     return emissive_light + sunlight;
 }
 
+fn sample_direct_lighting_diffuse(ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
+    let light_count = arrayLength(&emissive_object_indices);
+    let unshadowed_light = sample_unshadowed_direct_lighting(ray_origin, origin_world_normal, light_count, state);
+    let visibility = trace_light_visibility(ray_origin, unshadowed_light.world_position, unshadowed_light.light_distance);
+    let light_direction = normalize(unshadowed_light.world_position - ray_origin);
+    let emissive_light = unshadowed_light.light * unshadowed_light.inverse_pdf * visibility * max(dot(light_direction, origin_world_normal), 0.0);
+
+    let sunlight = sample_sunlight(ray_origin, origin_world_normal, state) * max(dot(uniforms.sun_direction, origin_world_normal), 0.0);
+
+    return emissive_light + sunlight;
+}
+
 fn depth_to_world_position(depth: f32, uv: vec2<f32>) -> vec3<f32> {
     let xy_ndc = (uv - vec2(0.5)) * vec2(2.0, -2.0);
     let world_pos = view.inverse_view_proj * vec4(xy_ndc, depth, 1.0);

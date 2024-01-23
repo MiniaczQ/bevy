@@ -1,6 +1,6 @@
 #import surfels::view_bindings allocated_surfels_bitmap, surfel_position, surfel_normal, surfel_irradiance, MAX_SURFELS
 #import bevy_solari::scene_bindings map_ray_hit, uniforms
-#import surfels::utils sample_cosine_hemisphere, sample_direct_lighting, trace_ray
+#import surfels::utils sample_cosine_hemisphere, sample_direct_lighting_diffuse, trace_ray
 
 @compute @workgroup_size(64)
 fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
@@ -24,7 +24,7 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
 
             var lighting = vec3<f32>(0.0);
 
-            let direct_lighting = sample_direct_lighting(hit_pos, solari_ray_hit.world_normal, &rng);
+            let direct_lighting_diffuse = sample_direct_lighting_diffuse(hit_pos + solari_ray_hit.world_normal * 0.001, solari_ray_hit.world_normal, &rng);
 
             var total_weight = 0.000001;
             for (var id = 0u; id < MAX_SURFELS; id++) {
@@ -38,7 +38,7 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
             }
 
             let surfel_illu = lighting / total_weight;
-            irradiance += solari_ray_hit.material.base_color * (direct_lighting + surfel_illu);
+            irradiance += solari_ray_hit.material.base_color * (direct_lighting_diffuse + surfel_illu);
         }
 
         // Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
