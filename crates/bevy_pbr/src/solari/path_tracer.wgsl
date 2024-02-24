@@ -35,7 +35,7 @@ fn path_trace(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if ray_hit.kind != RAY_QUERY_INTERSECTION_NONE {
             let ray_hit = resolve_ray_hit(ray_hit);
 
-            color += ray_hit.material.emissive * throughput;
+            irradiance += ray_hit.material.emissive * throughput;
 
             let cos_theta = dot(ray_hit.world_normal, -ray_direction);
             let diffuse_brdf = ray_hit.material.base_color / PI;
