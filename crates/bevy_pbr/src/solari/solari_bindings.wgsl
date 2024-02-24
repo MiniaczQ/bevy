@@ -243,7 +243,7 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
     return LightSample(radiance, pdf);
 }
 
-fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
+fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
     var barycentrics = rand_vec2f(state);
     if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
     let light_hit = resolve_ray_hit_inner(object_id, triangle_id, barycentrics);

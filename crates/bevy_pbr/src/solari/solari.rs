@@ -2,6 +2,7 @@ use super::{
     asset_binder::AssetBindings, scene_binder::SceneBindings, SolariSettings,
     SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
 };
+use bevy_core_pipeline::prepass::ViewPrepassTextures;
 use bevy_ecs::{
     component::Component,
     entity::Entity,
@@ -11,11 +12,9 @@ use bevy_ecs::{
 };
 use bevy_render::{
     camera::ExtractedCamera,
+    globals::{GlobalsBuffer, GlobalsUniform},
     render_graph::{NodeRunError, RenderGraphContext, ViewNode},
-    render_resource::{
-        binding_types::{texture_storage_2d, uniform_buffer},
-        *,
-    },
+    render_resource::{binding_types::*, *},
     renderer::{RenderContext, RenderDevice},
     texture::{CachedTexture, TextureCache},
     view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
@@ -31,6 +30,7 @@ impl ViewNode for SolariNode {
         &'static ViewResources,
         &'static ExtractedCamera,
         &'static ViewTarget,
+        &'static ViewPrepassTextures,
         &'static ViewUniformOffset,
     );
 
@@ -38,25 +38,34 @@ impl ViewNode for SolariNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_resources, camera, view_target, view_uniform_offset): QueryItem<Self::ViewQuery>,
+        (view_resources, camera, view_target, view_prepass_textures, view_uniform_offset): QueryItem<
+            Self::ViewQuery,
+        >,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let pipeline_cache = world.resource::<PipelineCache>();
         let asset_bindings = world.resource::<AssetBindings>();
         let scene_bindings = world.resource::<SceneBindings>();
         let view_uniforms = world.resource::<ViewUniforms>();
+        let globals_uniforms = world.resource::<GlobalsBuffer>();
         let (
             Some(sample_direct_diffuse_pipeline),
             Some(asset_bindings),
             Some(scene_bindings),
             Some(viewport),
+            Some(gbuffer),
+            Some(depth_buffer),
             Some(view_uniforms),
+            Some(globals_uniforms),
         ) = (
             pipeline_cache.get_compute_pipeline(self.sample_direct_diffuse_pipeline),
             &asset_bindings.bind_group,
             &scene_bindings.bind_group,
             camera.physical_viewport_size,
+            view_prepass_textures.deferred_view(),
+            view_prepass_textures.depth_view(),
             view_uniforms.uniforms.binding(),
+            globals_uniforms.buffer.binding(),
         )
         else {
             return Ok(());
@@ -68,7 +77,10 @@ impl ViewNode for SolariNode {
             &BindGroupEntries::sequential((
                 &view_resources.direct_diffuse.default_view,
                 view_target.get_color_attachment().view,
+                gbuffer,
+                depth_buffer,
                 view_uniforms,
+                globals_uniforms,
             )),
         );
 
@@ -105,7 +117,10 @@ impl FromWorld for SolariNode {
                         ViewTarget::TEXTURE_FORMAT_HDR,
                         StorageTextureAccess::WriteOnly,
                     ),
+                    texture_2d(TextureSampleType::Uint),
+                    texture_depth_2d(),
                     uniform_buffer::<ViewUniform>(true),
+                    uniform_buffer::<GlobalsUniform>(false),
                 ),
             ),
         );
