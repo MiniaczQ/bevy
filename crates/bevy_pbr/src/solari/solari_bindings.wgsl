@@ -177,7 +177,7 @@ fn generate_tbn(normal: vec3<f32>) -> mat3x3<f32> {
 }
 
 struct LightSample {
-    radiance: vec3<f32>,
+    irradiance: vec3<f32>,
     pdf: f32,
 }
 
@@ -200,7 +200,9 @@ fn sample_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function,
     var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
     ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
 
-    return LightSample(light.color.rgb, pdf);
+    let irradiance = light.color.rgb * cos_theta;
+
+    return LightSample(irradiance, pdf);
 }
 
 fn trace_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
@@ -222,7 +224,9 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, 
     let ray_hit = rayQueryGetCommittedIntersection(&rq);
     let light_visible = f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
 
-    return light.color.rgb * light_visible;
+    let irradiance = light.color.rgb * cos_theta;
+
+    return irradiance * light_visible;
 }
 
 fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
@@ -238,9 +242,9 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
     let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
     let light_distance_squared = light_distance * light_distance;
-    let radiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
+    let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
 
-    return LightSample(radiance, pdf);
+    return LightSample(irradiance, pdf);
 }
 
 fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
@@ -253,7 +257,7 @@ fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f3
     let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
     let light_distance_squared = light_distance * light_distance;
-    let radiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
+    let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
 
     let ray_t_max = light_distance - RAY_T_MIN;
     let ray = RayDesc(RAY_FLAG_TERMINATE_ON_FIRST_HIT, RAY_NO_CULL, RAY_T_MIN, ray_t_max, ray_origin, ray_direction);
@@ -263,7 +267,7 @@ fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f3
     let ray_hit = rayQueryGetCommittedIntersection(&rq);
     let light_visible = f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
 
-    return radiance * light_visible;
+    return irradiance * light_visible;
 }
 
 fn sample_light_sources(light_id: u32, light_count: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {

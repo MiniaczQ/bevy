@@ -1,8 +1,8 @@
 #import bevy_render::view::View
 #import bevy_render::globals::Globals
 #import bevy_pbr::solari::bindings::{trace_ray, resolve_ray_hit, light_sources, sample_light_sources, trace_light_source, RAY_T_MIN, RAY_T_MAX}
-#import bevy_pbr::pbr_deferred_types::unpack_24bit_normal
-#import bevy_pbr::utils::{rand_f, rand_range_u, octahedral_decode}
+#import bevy_pbr::pbr_deferred_types::{unpack_24bit_normal}
+#import bevy_pbr::utils::{PI, rand_f, rand_range_u, octahedral_decode}
 #import bevy_core_pipeline::tonemapping::tonemapping_luminance
 
 @group(2) @binding(0) var direct_diffuse: texture_storage_2d<rgba16float, read_write>;
@@ -36,14 +36,13 @@ fn reconstruct_world_position(pixel_id: vec2<u32>, depth: f32) -> vec3<f32> {
     return world_pos.xyz / world_pos.w;
 }
 
-// TODO: p_hat should be based on irradiance, not radiance, i.e. account for cos(theta) and BRDF terms
-
 @compute @workgroup_size(8, 8, 1)
 fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if any(global_id.xy >= vec2u(view.viewport.zw)) {
         return;
     }
 
+    // TODO: Spatio-temporal blue noise
     let pixel_index = global_id.x + global_id.y * u32(view.viewport.z);
     let frame_index = globals.frame_count * 5782582u;
     var rng = pixel_index + frame_index;
@@ -52,6 +51,8 @@ fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let depth = textureLoad(depth_buffer, global_id.xy, 0i);
     let world_position = reconstruct_world_position(global_id.xy, depth);
     let world_normal = octahedral_decode(unpack_24bit_normal(gpixel.a));
+    let base_color = pow(unpack4x8unorm(gpixel.r).rgb, vec3(2.2));
+    let brdf = base_color / PI;
 
     var reservoir = Reservoir(0u, 0u, 0.0, 0.0, 0u);
     let light_count = arrayLength(&light_sources);
@@ -61,22 +62,22 @@ fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
         let light_rng = rng;
         let sample = sample_light_sources(light_id, light_count, world_position, world_normal, &rng);
-        let p_hat = tonemapping_luminance(sample.radiance);
+        let p_hat = tonemapping_luminance(sample.irradiance * brdf);
         let light_weight = p_hat / sample.pdf;
 
         update_reservoir(&reservoir, light_id, light_rng, light_weight, &rng);
     }
 
     rng = reservoir.light_rng;
-    var radiance = trace_light_source(reservoir.light_id, world_position, world_normal, &rng);
+    var irradiance = trace_light_source(reservoir.light_id, world_position, world_normal, &rng);
 
-    let p_hat = tonemapping_luminance(radiance);
+    let p_hat = tonemapping_luminance(irradiance * brdf);
     let w = reservoir.weight_sum / (p_hat * f32(reservoir.sample_count));
     reservoir.light_weight = select(0.0, w, p_hat > 0.0);
 
-    radiance *= reservoir.light_weight;
-    radiance *= view.exposure;
+    irradiance *= reservoir.light_weight;
+    irradiance *= view.exposure;
 
-    textureStore(direct_diffuse, global_id.xy, vec4(radiance, 1.0));
-    textureStore(view_output, global_id.xy, vec4(radiance, 1.0));
+    textureStore(direct_diffuse, global_id.xy, vec4(irradiance, 1.0));
+    textureStore(view_output, global_id.xy, vec4(irradiance, 1.0));
 }
