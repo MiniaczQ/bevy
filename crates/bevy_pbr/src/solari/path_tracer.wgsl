@@ -4,7 +4,7 @@
 #import bevy_core_pipeline::tonemapping::tonemapping_luminance
 
 @group(2) @binding(0) var accumulation_texture: texture_storage_2d<rgba32float, read_write>;
-@group(2) @binding(1) var output_texture: texture_storage_2d<rgba16float, write>;
+@group(2) @binding(1) var view_output: texture_storage_2d<rgba16float, write>;
 @group(2) @binding(2) var<uniform> view: View;
 
 @compute @workgroup_size(8, 8, 1)
@@ -56,5 +56,5 @@ fn path_trace(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let new_color = (color + old_color.a * old_color.rgb) / (old_color.a + 1.0);
     textureStore(accumulation_texture, global_id.xy, vec4(new_color, old_color.a + 1.0));
-    textureStore(output_texture, global_id.xy, vec4(new_color, 1.0));
+    textureStore(view_output, global_id.xy, vec4(new_color, 1.0));
 }
