@@ -1,7 +1,7 @@
 use crate::{
     graph::NodePbr, irradiance_volume::IrradianceVolume, prelude::EnvironmentMapLight,
-    MeshPipeline, MeshViewBindGroup, RenderViewLightProbes, ScreenSpaceAmbientOcclusionSettings,
-    ViewLightProbesUniformOffset,
+    solari::SolariSettings, MeshPipeline, MeshViewBindGroup, RenderViewLightProbes,
+    ScreenSpaceAmbientOcclusionSettings, ViewLightProbesUniformOffset,
 };
 use bevy_app::prelude::*;
 use bevy_asset::{load_internal_asset, Handle};
@@ -155,7 +155,7 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
 
     fn run(
         &self,
-        _graph_context: &mut RenderGraphContext,
+        graph_context: &mut RenderGraphContext,
         render_context: &mut RenderContext,
         (
             view_uniform_offset,
@@ -169,6 +169,13 @@ impl ViewNode for DeferredOpaquePass3dPbrLightingNode {
         ): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
+        if world
+            .entity(graph_context.view_entity())
+            .contains::<SolariSettings>()
+        {
+            return Ok(());
+        }
+
         let pipeline_cache = world.resource::<PipelineCache>();
         let deferred_lighting_layout = world.resource::<DeferredLightingLayout>();
 
