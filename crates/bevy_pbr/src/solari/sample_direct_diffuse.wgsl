@@ -36,7 +36,7 @@ fn reconstruct_world_position(pixel_id: vec2<u32>, depth: f32) -> vec3<f32> {
     return world_pos.xyz / world_pos.w;
 }
 
-// TODO: p_hat should account for cos(theta) and BRDF terms
+// TODO: p_hat should be based on irradiance, not radiance, i.e. account for cos(theta) and BRDF terms
 
 @compute @workgroup_size(8, 8, 1)
 fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
