@@ -55,6 +55,7 @@ impl ViewNode for SolariNode {
             Some(viewport),
             Some(gbuffer),
             Some(depth_buffer),
+            Some(motion_vectors),
             Some(view_uniforms),
             Some(globals_uniforms),
         ) = (
@@ -64,6 +65,7 @@ impl ViewNode for SolariNode {
             camera.physical_viewport_size,
             view_prepass_textures.deferred_view(),
             view_prepass_textures.depth_view(),
+            view_prepass_textures.motion_vectors_view(),
             view_uniforms.uniforms.binding(),
             globals_uniforms.buffer.binding(),
         )
@@ -79,6 +81,7 @@ impl ViewNode for SolariNode {
                 view_target.get_color_attachment().view,
                 gbuffer,
                 depth_buffer,
+                motion_vectors,
                 view_uniforms,
                 globals_uniforms,
             )),
@@ -119,6 +122,7 @@ impl FromWorld for SolariNode {
                     ),
                     texture_2d(TextureSampleType::Uint),
                     texture_depth_2d(),
+                    texture_2d(TextureSampleType::Float { filterable: false }),
                     uniform_buffer::<ViewUniform>(true),
                     uniform_buffer::<GlobalsUniform>(false),
                 ),

@@ -5,12 +5,14 @@
 #import bevy_pbr::utils::{PI, rand_f, rand_range_u, octahedral_decode}
 #import bevy_core_pipeline::tonemapping::tonemapping_luminance
 
+// TODO: Add previous gbuffer, depth_buffer, tlas, lights
 @group(2) @binding(0) var direct_diffuse: texture_storage_2d<rgba16float, read_write>;
 @group(2) @binding(1) var view_output: texture_storage_2d<rgba16float, write>;
 @group(2) @binding(2) var gbuffer: texture_2d<u32>;
 @group(2) @binding(3) var depth_buffer: texture_depth_2d;
-@group(2) @binding(4) var<uniform> view: View;
-@group(2) @binding(5) var<uniform> globals: Globals;
+@group(2) @binding(4) var motion_vectors: texture_2d<f32>;
+@group(2) @binding(5) var<uniform> view: View;
+@group(2) @binding(6) var<uniform> globals: Globals;
 
 struct Reservoir {
     light_id: u32,
