@@ -131,7 +131,7 @@ impl Plugin for UiPlugin {
             .register_type::<Outline>()
             .add_systems(
                 PreUpdate,
-                ui_focus_system.in_set(UiSystem::Focus).after(InputSystem),
+                ui_focus_system.in_set(UiSystem::Focus).after(InputSystem::InputBuffering),
             );
 
         app.add_systems(

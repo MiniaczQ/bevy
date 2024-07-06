@@ -66,18 +66,34 @@ pub struct InputPlugin;
 
 /// Label for systems that update the input data.
 #[derive(Debug, PartialEq, Eq, Clone, Hash, SystemSet)]
-pub struct InputSystem;
+pub enum InputSystem {
+    /// Systems that generate user-oriented input events.
+    ///
+    /// Not all inputs are generated in this system set!
+    /// Keyboard, mouse and touch inputs are provisioned from outside of the world, in-between frames.
+    InputProvision,
+    /// Systems that buffer input state into resources.
+    InputBuffering,
+}
 
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
-        app
-            // keyboard
-            .add_event::<KeyboardInput>()
+        app.configure_sets(
+            PreUpdate,
+            (InputSystem::InputProvision, InputSystem::InputBuffering).chain(),
+        );
+
+        // Keyboard
+        app.add_event::<KeyboardInput>()
             .add_event::<KeyboardFocusLost>()
             .init_resource::<ButtonInput<KeyCode>>()
-            .add_systems(PreUpdate, keyboard_input_system.in_set(InputSystem))
-            // mouse
-            .add_event::<MouseButtonInput>()
+            .add_systems(
+                PreUpdate,
+                keyboard_input_system.in_set(InputSystem::InputBuffering),
+            );
+
+        // Mouse
+        app.add_event::<MouseButtonInput>()
             .add_event::<MouseMotion>()
             .add_event::<MouseWheel>()
             .init_resource::<ButtonInput<MouseButton>>()
@@ -88,14 +104,11 @@ impl Plugin for InputPlugin {
                     accumulate_mouse_motion_system,
                     accumulate_mouse_scroll_system,
                 )
-                    .in_set(InputSystem),
-            )
-            .add_event::<PinchGesture>()
-            .add_event::<RotationGesture>()
-            .add_event::<DoubleTapGesture>()
-            .add_event::<PanGesture>()
-            // gamepad
-            .add_event::<GamepadConnectionEvent>()
+                    .in_set(InputSystem::InputBuffering),
+            );
+
+        // Gamepad
+        app.add_event::<GamepadConnectionEvent>()
             .add_event::<GamepadButtonChangedEvent>()
             .add_event::<GamepadButtonInput>()
             .add_event::<GamepadAxisChangedEvent>()
@@ -110,22 +123,29 @@ impl Plugin for InputPlugin {
             .init_resource::<AccumulatedMouseScroll>()
             .add_systems(
                 PreUpdate,
-                (
-                    gamepad_event_system,
-                    gamepad_connection_system.after(gamepad_event_system),
-                    gamepad_button_event_system
-                        .after(gamepad_event_system)
-                        .after(gamepad_connection_system),
-                    gamepad_axis_event_system
-                        .after(gamepad_event_system)
-                        .after(gamepad_connection_system),
-                )
-                    .in_set(InputSystem),
+                gamepad_event_system.in_set(InputSystem::InputProvision),
             )
-            // touch
-            .add_event::<TouchInput>()
+            .add_systems(
+                PreUpdate,
+                (
+                    gamepad_connection_system,
+                    gamepad_button_event_system.after(gamepad_connection_system),
+                    gamepad_axis_event_system.after(gamepad_connection_system),
+                )
+                    .in_set(InputSystem::InputBuffering),
+            );
+
+        // Touch
+        app.add_event::<TouchInput>()
+            .add_event::<PinchGesture>()
+            .add_event::<RotationGesture>()
+            .add_event::<DoubleTapGesture>()
+            .add_event::<PanGesture>()
             .init_resource::<Touches>()
-            .add_systems(PreUpdate, touch_screen_input_system.in_set(InputSystem));
+            .add_systems(
+                PreUpdate,
+                touch_screen_input_system.in_set(InputSystem::InputBuffering),
+            );
 
         // Register common types
         app.register_type::<ButtonState>()

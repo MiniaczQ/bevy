@@ -48,7 +48,10 @@ impl Plugin for GilrsPlugin {
 
                 app.init_resource::<RunningRumbleEffects>()
                     .add_systems(PreStartup, gilrs_event_startup_system)
-                    .add_systems(PreUpdate, gilrs_event_system.before(InputSystem))
+                    .add_systems(
+                        PreUpdate,
+                        gilrs_event_system.before(InputSystem::InputProvision),
+                    )
                     .add_systems(PostUpdate, play_gilrs_rumble.in_set(RumbleSystem));
             }
             Err(err) => error!("Failed to start Gilrs. {}", err),
