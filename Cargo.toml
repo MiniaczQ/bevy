@@ -700,12 +700,12 @@ category = "3D Rendering"
 wasm = false
 
 [[example]]
-name = "solari"
-path = "examples/3d/solari.rs"
+name = "surfels"
+path = "examples/3d/surfels.rs"
 
-[package.metadata.example.solari]
-name = "Solari"
-description = "Demonstrates realtime dynamic global illumination rendering using Bevy Solari."
+[package.metadata.example.surfels]
+name = "Surfels"
+description = "Demonstrates realtime global illumination using Surfels."
 category = "3D Rendering"
 wasm = false
 

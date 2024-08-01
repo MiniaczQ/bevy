@@ -438,6 +438,10 @@ fn apply_pbr_lighting(
     }
 #endif
 
+//#ifdef GLOBAL_ILLUMINATION
+    indirect_light = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
+//#endif
+
     // Total light
     output_color = vec4<f32>(
         view_bindings::view.exposure * (transmitted_light + direct_light + indirect_light + emissive_light),

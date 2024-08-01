@@ -146,7 +146,8 @@ impl Plugin for ImagePlugin {
                 .init_resource::<FallbackImage>()
                 .init_resource::<FallbackImageZero>()
                 .init_resource::<FallbackImageCubemap>()
-                .init_resource::<FallbackImageFormatMsaaCache>();
+                .init_resource::<FallbackImageFormatMsaaCache>()
+                .init_resource::<FallbackImageZeroRgba16Float>();
         }
     }
 }

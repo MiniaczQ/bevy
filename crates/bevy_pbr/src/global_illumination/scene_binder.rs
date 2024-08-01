@@ -2,7 +2,7 @@ use super::{
     asset_binder::AssetBindings,
     blas_manager::BlasManager,
     extract_asset_events::ExtractedAssetEvents,
-    gpu_types::{DirectionalLight, GpuSolariMaterial, LightSource},
+    gpu_types::{DirectionalLight, GpuGiMaterial, LightSource},
 };
 use crate::{ExtractedDirectionalLight, StandardMaterial};
 use bevy_asset::{AssetId, Handle};
@@ -60,7 +60,7 @@ impl FromWorld for SceneBindings {
                         BindingType::AccelerationStructure,
                         storage_buffer_read_only::<u32>(false),
                         storage_buffer_read_only::<Mat4>(false),
-                        storage_buffer_read_only::<GpuSolariMaterial>(false),
+                        storage_buffer_read_only::<GpuGiMaterial>(false),
                         storage_buffer_read_only::<LightSource>(false),
                         storage_buffer_read_only::<DirectionalLight>(false),
                     ),
@@ -95,7 +95,7 @@ pub fn prepare_scene_bindings(
     let mut material_ids = HashMap::with_capacity(asset_events.materials.len());
     for (asset_id, material) in &asset_events.materials {
         material_ids.insert(*asset_id, materials.len() as u32);
-        materials.push(GpuSolariMaterial {
+        materials.push(GpuGiMaterial {
             base_color: material.base_color.as_linear_rgba_f32(),
             emissive: material.emissive.as_linear_rgba_f32(),
             base_color_texture_id: get_image_id(material.base_color_texture),

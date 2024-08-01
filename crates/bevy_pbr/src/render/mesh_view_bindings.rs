@@ -17,7 +17,10 @@ use bevy_render::{
     render_asset::RenderAssets,
     render_resource::{binding_types::*, *},
     renderer::RenderDevice,
-    texture::{BevyDefault, FallbackImage, FallbackImageMsaa, FallbackImageZero, Image},
+    texture::{
+        BevyDefault, FallbackImage, FallbackImageMsaa, FallbackImageZero,
+        FallbackImageZeroRgba16Float, Image,
+    },
     view::{Msaa, ViewUniform, ViewUniforms},
 };
 
@@ -33,6 +36,7 @@ use environment_map::EnvironmentMapLight;
 
 use crate::{
     environment_map::{self, RenderViewEnvironmentMapBindGroupEntries},
+    global_illumination::surfels::GlobalIlluminationViewResources,
     irradiance_volume::{
         self, IrradianceVolume, RenderViewIrradianceVolumeBindGroupEntries,
         IRRADIANCE_VOLUMES_ARE_USABLE,
@@ -312,6 +316,12 @@ fn layout_entries(
         (25, sampler(SamplerBindingType::Filtering)),
     ));
 
+    // Global Illumination Texture
+    entries = entries.extend_with_indices(((
+        26,
+        texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadOnly),
+    ),));
+
     entries.to_vec()
 }
 
@@ -365,12 +375,20 @@ pub fn prepare_mesh_view_bind_groups(
         &Tonemapping,
         Option<&RenderViewLightProbes<EnvironmentMapLight>>,
         Option<&RenderViewLightProbes<IrradianceVolume>>,
+        Option<&GlobalIlluminationViewResources>,
     )>,
-    (images, mut fallback_images, fallback_image, fallback_image_zero): (
+    (
+        images,
+        mut fallback_images,
+        fallback_image,
+        fallback_image_zero,
+        fallback_image_zero_rgba16float,
+    ): (
         Res<RenderAssets<Image>>,
         FallbackImageMsaa,
         Res<FallbackImage>,
         Res<FallbackImageZero>,
+        Res<FallbackImageZeroRgba16Float>,
     ),
     msaa: Res<Msaa>,
     globals_buffer: Res<GlobalsBuffer>,
@@ -402,6 +420,7 @@ pub fn prepare_mesh_view_bind_groups(
             tonemapping,
             render_view_environment_maps,
             render_view_irradiance_volumes,
+            global_illumination_view_resources,
         ) in &views
         {
             let fallback_ssao = fallback_images
@@ -521,6 +540,12 @@ pub fn prepare_mesh_view_bind_groups(
 
             entries =
                 entries.extend_with_indices(((24, transmission_view), (25, transmission_sampler)));
+
+            let global_illumination_view = global_illumination_view_resources
+                .map(|r| &r.diffuse.default_view)
+                .unwrap_or(&fallback_image_zero_rgba16float.texture_view);
+
+            entries = entries.extend_with_indices(((26, global_illumination_view),));
 
             commands.entity(entity).insert(MeshViewBindGroup {
                 value: render_device.create_bind_group("mesh_view_bind_group", layout, &entries),

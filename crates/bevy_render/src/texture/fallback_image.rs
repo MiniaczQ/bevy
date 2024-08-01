@@ -50,7 +50,7 @@ pub struct FallbackImageZero(GpuImage);
 #[derive(Resource, Deref)]
 pub struct FallbackImageCubemap(GpuImage);
 
-fn fallback_image_new(
+pub fn fallback_image_new(
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
     default_sampler: &DefaultImageSampler,
@@ -91,6 +91,9 @@ fn fallback_image_new(
         image
     };
     image.texture_descriptor.sample_count = samples;
+    if image.texture_descriptor.format == TextureFormat::Rgba16Float {
+        image.texture_descriptor.usage |= TextureUsages::STORAGE_BINDING;
+    }
     if image_dimension == TextureDimension::D2 {
         image.texture_descriptor.usage |= TextureUsages::RENDER_ATTACHMENT;
     }
@@ -254,5 +257,25 @@ impl<'w> FallbackImageMsaa<'w> {
                 255,
             )
         })
+    }
+}
+
+#[derive(Resource, Deref)]
+pub struct FallbackImageZeroRgba16Float(GpuImage);
+
+impl FromWorld for FallbackImageZeroRgba16Float {
+    fn from_world(world: &mut bevy_ecs::prelude::World) -> Self {
+        let render_device = world.resource::<RenderDevice>();
+        let render_queue = world.resource::<RenderQueue>();
+        let default_sampler = world.resource::<DefaultImageSampler>();
+        Self(fallback_image_new(
+            render_device,
+            render_queue,
+            default_sampler,
+            TextureFormat::Rgba16Float,
+            TextureViewDimension::D2,
+            1,
+            0,
+        ))
     }
 }

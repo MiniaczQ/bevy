@@ -1,5 +1,5 @@
 use super::{
-    asset_binder::AssetBindings, scene_binder::SceneBindings, SolariSettings,
+    asset_binder::AssetBindings, scene_binder::SceneBindings, GlobalIlluminationSettings,
     SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
 };
 use bevy_core_pipeline::prepass::ViewPrepassTextures;
@@ -17,7 +17,7 @@ use bevy_render::{
     render_resource::{binding_types::*, *},
     renderer::{RenderContext, RenderDevice},
     texture::{CachedTexture, TextureCache},
-    view::{ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms},
+    view::{ViewUniform, ViewUniformOffset, ViewUniforms},
 };
 
 pub struct SolariNode {
@@ -27,9 +27,8 @@ pub struct SolariNode {
 
 impl ViewNode for SolariNode {
     type ViewQuery = (
-        &'static ViewResources,
+        &'static GlobalIlluminationViewResources,
         &'static ExtractedCamera,
-        &'static ViewTarget,
         &'static ViewPrepassTextures,
         &'static ViewUniformOffset,
     );
@@ -38,9 +37,13 @@ impl ViewNode for SolariNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_resources, camera, view_target, view_prepass_textures, view_uniform_offset): QueryItem<
-            Self::ViewQuery,
-        >,
+        (
+            view_resources,
+            camera,
+            // view_target,
+            view_prepass_textures,
+            view_uniform_offset,
+        ): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let pipeline_cache = world.resource::<PipelineCache>();
@@ -77,8 +80,7 @@ impl ViewNode for SolariNode {
             "solari_path_tracer_bind_group",
             &self.bind_group_layout,
             &BindGroupEntries::sequential((
-                &view_resources.direct_diffuse.default_view,
-                view_target.get_color_attachment().view,
+                &view_resources.diffuse.default_view,
                 gbuffer,
                 depth_buffer,
                 motion_vectors,
@@ -116,10 +118,6 @@ impl FromWorld for SolariNode {
                 ShaderStages::COMPUTE,
                 (
                     texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite),
-                    texture_storage_2d(
-                        ViewTarget::TEXTURE_FORMAT_HDR,
-                        StorageTextureAccess::WriteOnly,
-                    ),
                     texture_2d(TextureSampleType::Uint),
                     texture_depth_2d(),
                     texture_2d(TextureSampleType::Float { filterable: false }),
@@ -151,7 +149,7 @@ impl FromWorld for SolariNode {
 }
 
 pub fn prepare_view_resources(
-    query: Query<(Entity, &SolariSettings, &ExtractedCamera)>,
+    query: Query<(Entity, &GlobalIlluminationSettings, &ExtractedCamera)>,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     mut commands: Commands,
@@ -164,8 +162,8 @@ pub fn prepare_view_resources(
             continue;
         };
 
-        let direct_diffuse = TextureDescriptor {
-            label: Some("solari_direct_diffuse_texture"),
+        let diffuse = TextureDescriptor {
+            label: Some("global_illumination_diffuse_texture"),
             size: Extent3d {
                 width: viewport.x,
                 height: viewport.y,
@@ -179,13 +177,15 @@ pub fn prepare_view_resources(
             view_formats: &[],
         };
 
-        commands.entity(entity).insert(ViewResources {
-            direct_diffuse: texture_cache.get(&render_device, direct_diffuse),
-        });
+        commands
+            .entity(entity)
+            .insert(GlobalIlluminationViewResources {
+                diffuse: texture_cache.get(&render_device, diffuse),
+            });
     }
 }
 
 #[derive(Component)]
-pub struct ViewResources {
-    direct_diffuse: CachedTexture,
+pub struct GlobalIlluminationViewResources {
+    pub diffuse: CachedTexture,
 }

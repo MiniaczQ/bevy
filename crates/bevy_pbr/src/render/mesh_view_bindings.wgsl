@@ -90,3 +90,5 @@
 
 @group(0) @binding(24) var view_transmission_texture: texture_2d<f32>;
 @group(0) @binding(25) var view_transmission_sampler: sampler;
+
+@group(0) @binding(26) var global_illumination_diffuse: texture_storage_2d<rgba16float, read>;

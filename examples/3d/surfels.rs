@@ -5,7 +5,9 @@ mod camera_controller;
 
 use bevy::{
     core_pipeline::prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass},
-    pbr::solari::{SolariPlugin, SolariSettings, SolariSupported},
+    pbr::global_illumination::{
+        GlobalIlluminationPlugin, GlobalIlluminationSettings, GlobalIlluminationSupported,
+    },
     prelude::*,
     render::camera::CameraMainTextureUsages,
 };
@@ -14,17 +16,21 @@ use std::f32::consts::PI;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, SolariPlugin, CameraControllerPlugin))
+        .add_plugins((
+            DefaultPlugins,
+            GlobalIlluminationPlugin,
+            CameraControllerPlugin,
+        ))
         .add_systems(
             Startup,
             (
-                solari_not_supported.run_if(not(resource_exists::<SolariSupported>)),
-                setup.run_if(resource_exists::<SolariSupported>),
+                solari_not_supported.run_if(not(resource_exists::<GlobalIlluminationSupported>)),
+                setup.run_if(resource_exists::<GlobalIlluminationSupported>),
             ),
         )
         .add_systems(
             Update,
-            toggle_solari.run_if(resource_exists::<SolariSupported>),
+            toggle_solari.run_if(resource_exists::<GlobalIlluminationSupported>),
         )
         .run();
 }
@@ -67,7 +73,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         DeferredPrepass,
         DepthPrepass,
         MotionVectorPrepass,
-        SolariSettings::default(),
+        GlobalIlluminationSettings::default(),
         CameraController::default(),
     ));
 }
@@ -94,14 +100,18 @@ fn solari_not_supported(mut commands: Commands) {
 fn toggle_solari(
     key_input: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
-    camera: Query<(Entity, Has<SolariSettings>), With<Camera>>,
+    camera: Query<(Entity, Has<GlobalIlluminationSettings>), With<Camera>>,
 ) {
     if key_input.just_pressed(KeyCode::Space) {
         let (entity, solari_enabled) = camera.single();
         if solari_enabled {
-            commands.entity(entity).remove::<SolariSettings>();
+            commands
+                .entity(entity)
+                .remove::<GlobalIlluminationSettings>();
         } else {
-            commands.entity(entity).insert(SolariSettings::default());
+            commands
+                .entity(entity)
+                .insert(GlobalIlluminationSettings::default());
         }
     }
 }

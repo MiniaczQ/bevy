@@ -36,7 +36,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::{hash::Hash, num::NonZeroU32};
 
 use self::{
-    irradiance_volume::IrradianceVolume, prelude::EnvironmentMapLight, solari::SolariSettings,
+    global_illumination::GlobalIlluminationSettings, irradiance_volume::IrradianceVolume,
+    prelude::EnvironmentMapLight,
 };
 
 /// Materials are used alongside [`MaterialPlugin`] and [`MaterialMeshBundle`]
@@ -470,7 +471,7 @@ pub fn queue_material_meshes<M: Material>(
     render_mesh_instances: Res<RenderMeshInstances>,
     render_material_instances: Res<RenderMaterialInstances<M>>,
     render_lightmaps: Res<RenderLightmaps>,
-    mut views: Query<
+    mut views: Query<(
         (
             &ExtractedView,
             &VisibleEntities,
@@ -496,27 +497,30 @@ pub fn queue_material_meshes<M: Material>(
                 Has<RenderViewLightProbes<IrradianceVolume>>,
             ),
         ),
-        Without<SolariSettings>,
-    >,
+        Option<&GlobalIlluminationSettings>,
+    )>,
 ) where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     for (
-        view,
-        visible_entities,
-        tonemapping,
-        dither,
-        shadow_filter_method,
-        ssao,
-        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
-        camera_3d,
-        temporal_jitter,
-        projection,
-        mut opaque_phase,
-        mut alpha_mask_phase,
-        mut transmissive_phase,
-        mut transparent_phase,
-        (has_environment_maps, has_irradiance_volumes),
+        (
+            view,
+            visible_entities,
+            tonemapping,
+            dither,
+            shadow_filter_method,
+            ssao,
+            (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
+            camera_3d,
+            temporal_jitter,
+            projection,
+            mut opaque_phase,
+            mut alpha_mask_phase,
+            mut transmissive_phase,
+            mut transparent_phase,
+            (has_environment_maps, has_irradiance_volumes),
+        ),
+        gi_settings,
     ) in &mut views
     {
         let draw_opaque_pbr = opaque_draw_functions.read().id::<DrawMaterial<M>>();
@@ -591,6 +595,11 @@ pub fn queue_material_meshes<M: Material>(
                 camera_3d.screen_space_specular_transmission_quality,
             );
         }
+
+        if let Some(_gi_settings) = gi_settings {
+            view_key |= MeshPipelineKey::GLOBAL_ILLUMINATION;
+        }
+
         let rangefinder = view.rangefinder3d();
         for visible_entity in &visible_entities.entities {
             let Some(material_asset_id) = render_material_instances.get(visible_entity) else {

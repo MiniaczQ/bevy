@@ -1,4 +1,4 @@
-use super::gpu_types::SolariMaterial;
+use super::gpu_types::GiMaterial;
 use crate::StandardMaterial;
 use bevy_asset::{AssetEvent, AssetId, Assets, Handle};
 use bevy_ecs::{
@@ -17,7 +17,7 @@ pub struct ExtractedAssetEvents {
     pub images_removed: Vec<AssetId<Image>>,
     materials_changed: HashSet<AssetId<StandardMaterial>>,
     materials_removed: Vec<AssetId<StandardMaterial>>,
-    pub materials: HashMap<AssetId<StandardMaterial>, SolariMaterial>,
+    pub materials: HashMap<AssetId<StandardMaterial>, GiMaterial>,
 }
 
 pub fn extract_asset_events(
@@ -85,7 +85,7 @@ pub fn extract_asset_events(
     let materials = main_world.resource::<Assets<StandardMaterial>>();
     for asset_id in asset_events.materials_changed.drain() {
         if let Some(material) = materials.get(asset_id) {
-            let solari_material = SolariMaterial {
+            let solari_material = GiMaterial {
                 base_color: material.base_color,
                 base_color_texture: material.base_color_texture.as_ref().map(Handle::id),
                 normal_map_texture: material.normal_map_texture.as_ref().map(Handle::id),

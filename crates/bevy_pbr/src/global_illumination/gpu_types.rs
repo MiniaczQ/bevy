@@ -2,7 +2,7 @@ use bevy_asset::AssetId;
 use bevy_math::Vec3;
 use bevy_render::{color::Color, render_resource::ShaderType, texture::Image};
 
-pub struct SolariMaterial {
+pub struct GiMaterial {
     pub base_color: Color,
     pub base_color_texture: Option<AssetId<Image>>,
     pub normal_map_texture: Option<AssetId<Image>>,
@@ -11,7 +11,7 @@ pub struct SolariMaterial {
 }
 
 #[derive(ShaderType)]
-pub struct GpuSolariMaterial {
+pub struct GpuGiMaterial {
     pub base_color: [f32; 4],
     pub emissive: [f32; 4],
     pub base_color_texture_id: u32,
