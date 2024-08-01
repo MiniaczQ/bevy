@@ -64,7 +64,7 @@ image = { version = "0.24", default-features = false }
 codespan-reporting = "0.11.0"
 # `fragile-send-sync-non-atomic-wasm` feature means we can't use WASM threads for rendering
 # It is enabled for now to avoid having to do a significant overhaul of the renderer just for wasm
-wgpu = { git = "https://github.com/daniel-keitel/wgpu", branch = "ray-tracing", default-features = false, features = [
+wgpu = { git = "https://github.com/daniel-keitel/wgpu", rev = "e042a86375f9320518cd49ab55c2985d22606966", default-features = false, features = [
   "wgsl",
   "dx12",
   "metal",
@@ -72,7 +72,7 @@ wgpu = { git = "https://github.com/daniel-keitel/wgpu", branch = "ray-tracing", 
   "naga-ir",
   "fragile-send-sync-non-atomic-wasm",
 ] }
-naga = { git = "https://github.com/daniel-keitel/wgpu", branch = "ray-tracing", features = [
+naga = { git = "https://github.com/daniel-keitel/wgpu", rev = "e042a86375f9320518cd49ab55c2985d22606966", features = [
   "wgsl-in",
 ] }
 serde = { version = "1", features = ["derive"] }
@@ -100,12 +100,12 @@ async-channel = "2.1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Omit the `glsl` feature in non-WebAssembly by default.
-naga_oil = { git = "https://github.com/jms55/naga_oil", branch = "ray-tracing", default-features = false, features = [
+naga_oil = { git = "https://github.com/miniaczq/naga_oil", branch = "ray-tracing", default-features = false, features = [
   "test_shader",
 ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-naga_oil = { git = "https://github.com/jms55/naga_oil", branch = "ray-tracing" }
+naga_oil = { git = "https://github.com/miniaczq/naga_oil", branch = "ray-tracing" }
 js-sys = "0.3"
 # web-sys doesn't follow semver for the WebGPU APIs as they are unstable
 # Make sure that WebGPU builds work when changing this!
