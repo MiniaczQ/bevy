@@ -13,7 +13,7 @@ fn main() {
     App::new()
         .add_plugins((DefaultPlugins, TemporalAntiAliasPlugin))
         .insert_resource(AmbientLight {
-            brightness: 0.0,
+            brightness: 0.1,
             ..Default::default()
         })
         .add_systems(
@@ -25,12 +25,7 @@ fn main() {
         )
         .add_systems(
             Update,
-            (
-                toggle_solari,
-                camera_controller,
-                update_sun_direction,
-                toggle_central_light,
-            )
+            (toggle_solari, camera_controller, toggle_central_light)
                 .chain()
                 .run_if(resource_exists::<SolariSupported>()),
         )
@@ -50,13 +45,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(PointLightBundle {
         point_light: PointLight {
             color: Color::WHITE,
-            intensity: 0.0,
-            range: 100.0,
-            radius: 0.1,
+            intensity: 100.0,
+            range: 2000.0,
+            radius: 0.0,
             shadows_enabled: false,
             ..default()
         },
-        transform: Transform::from_xyz(0.0, 0.9, 0.0),
+        transform: Transform::from_xyz(0.0, 2.9, 0.0),
         ..default()
     });
 
@@ -65,12 +60,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_rotation(Quat::from_euler(
-            EulerRot::XYZ,
-            PI * -0.43,
-            PI * -0.08,
-            0.0,
-        )),
+        transform: Transform::default().looking_to(Vec3::new(0.0, -1.0, 0.0).normalize(), Vec3::X),
         ..default()
     });
 
@@ -80,12 +70,8 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 hdr: true,
                 ..default()
             },
-            transform: Transform::from_matrix(Mat4 {
-                x_axis: Vec4::new(0.99480534, 0.0, -0.10179563, 0.0),
-                y_axis: Vec4::new(-0.019938117, 0.98063105, -0.19484669, 0.0),
-                z_axis: Vec4::new(0.09982395, 0.19586414, 0.975537, 0.0),
-                w_axis: Vec4::new(0.68394995, 2.2785425, 6.68395, 1.0),
-            }),
+            transform: Transform::from_xyz(0.0, 1.5, 6.0)
+                .looking_at(Vec3::new(0.0, 1.5, 0.0), Vec3::Y),
             ..default()
         },
         SurfelsSettings::default(),
@@ -136,27 +122,6 @@ use bevy::window::CursorGrabMode;
 use std::f32::consts::*;
 
 pub const RADIANS_PER_DOT: f32 = 1.0 / 180.0;
-
-fn update_sun_direction(
-    key_input: Res<Input<KeyCode>>,
-    time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut DirectionalLight)>,
-    mut animate_sun_direction: Local<bool>,
-) {
-    if key_input.just_pressed(KeyCode::L) {
-        *animate_sun_direction = !*animate_sun_direction;
-    }
-    if *animate_sun_direction {
-        for (mut transform, _) in &mut query {
-            transform.rotation = Quat::from_euler(
-                EulerRot::ZYX,
-                0.0,
-                time.elapsed_seconds() * PI / 3.0,
-                -FRAC_PI_4,
-            );
-        }
-    }
-}
 
 fn toggle_central_light(
     key_input: Res<Input<KeyCode>>,

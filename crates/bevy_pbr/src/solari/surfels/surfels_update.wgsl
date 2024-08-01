@@ -42,7 +42,7 @@ fn surfels_update(@builtin(local_invocation_index) local_idx: u32) {
         }
 
         // Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
-        surfel_irr.probes = min(surfel_irr.probes + 1u, 10u);
+        surfel_irr.probes = min(surfel_irr.probes + 1u, 32u);
         let delta = irradiance - surfel_irr.mean;
         surfel_irr.mean += delta / f32(surfel_irr.probes);
         let delta2 = irradiance - surfel_irr.mean;

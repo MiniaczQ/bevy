@@ -293,12 +293,10 @@ fn pbr(
 
 #ifdef GLOBAL_ILLUMINATION
     //let gi = textureLoad(view_bindings::surfels_diffuse_texture, vec2<i32>(in.frag_coord.xy), 0);
-
+//
     //if gi.a == 1.0 {
     //    output_color = gi;
     //}
-
-    //indirect_light += gi.rgb * (diffuse_color / PI);
 #endif
 
     return output_color;
