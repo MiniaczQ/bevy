@@ -559,6 +559,10 @@ pub fn queue_material_meshes<M: Material>(
             view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
         }
 
+        if gi_settings.is_some() {
+            view_key |= MeshPipelineKey::GLOBAL_ILLUMINATION;
+        }
+
         if let Some(projection) = projection {
             view_key |= match projection {
                 Projection::Perspective(_) => MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
@@ -594,10 +598,6 @@ pub fn queue_material_meshes<M: Material>(
             view_key |= screen_space_specular_transmission_pipeline_key(
                 camera_3d.screen_space_specular_transmission_quality,
             );
-        }
-
-        if let Some(_gi_settings) = gi_settings {
-            view_key |= MeshPipelineKey::GLOBAL_ILLUMINATION;
         }
 
         let rangefinder = view.rangefinder3d();

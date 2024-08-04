@@ -508,7 +508,7 @@ bitflags::bitflags! {
         const READS_VIEW_TRANSMISSION_TEXTURE   = 1 << 13;
         const LIGHTMAPPED                       = 1 << 14;
         const IRRADIANCE_VOLUME                 = 1 << 15;
-        const GLOBAL_ILLUMINATION = 1 << 32;
+        const GLOBAL_ILLUMINATION               = 1 << 16;
         const BLEND_RESERVED_BITS               = Self::BLEND_MASK_BITS << Self::BLEND_SHIFT_BITS; // ← Bitmask reserving bits for the blend state
         const BLEND_OPAQUE                      = 0 << Self::BLEND_SHIFT_BITS;                   // ← Values are just sequential within the mask, and can range from 0 to 3
         const BLEND_PREMULTIPLIED_ALPHA         = 1 << Self::BLEND_SHIFT_BITS;                   //
@@ -544,7 +544,7 @@ bitflags::bitflags! {
 
 impl MeshPipelineKey {
     const MSAA_MASK_BITS: u64 = 0b111;
-    const MSAA_SHIFT_BITS: u64 = 32 - Self::MSAA_MASK_BITS.count_ones() as u64;
+    const MSAA_SHIFT_BITS: u64 = 64 - Self::MSAA_MASK_BITS.count_ones() as u64;
 
     const PRIMITIVE_TOPOLOGY_MASK_BITS: u64 = 0b111;
     const PRIMITIVE_TOPOLOGY_SHIFT_BITS: u64 =

@@ -338,7 +338,7 @@ fn apply_pbr_lighting(
     }
 #endif
 
-#ifdef IRRADIANCE_VOLUME {
+#ifdef IRRADIANCE_VOLUME
     // Irradiance volume light (indirect)
     if (all(indirect_light == vec3(0.0f))) {
         let irradiance_volume_light = irradiance_volume::irradiance_volume_light(
@@ -438,9 +438,9 @@ fn apply_pbr_lighting(
     }
 #endif
 
-//#ifdef GLOBAL_ILLUMINATION
+#ifdef GLOBAL_ILLUMINATION
     indirect_light = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
-//#endif
+#endif
 
     // Total light
     output_color = vec4<f32>(

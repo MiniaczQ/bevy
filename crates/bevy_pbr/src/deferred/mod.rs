@@ -1,7 +1,8 @@
 use crate::{
-    global_illumination::GlobalIlluminationSettings, graph::NodePbr, irradiance_volume::IrradianceVolume,
-    prelude::EnvironmentMapLight, MeshPipeline, MeshViewBindGroup, RenderViewLightProbes,
-    ScreenSpaceAmbientOcclusionSettings, ViewLightProbesUniformOffset,
+    global_illumination::GlobalIlluminationSettings, graph::NodePbr,
+    irradiance_volume::IrradianceVolume, prelude::EnvironmentMapLight, MeshPipeline,
+    MeshViewBindGroup, RenderViewLightProbes, ScreenSpaceAmbientOcclusionSettings,
+    ViewLightProbesUniformOffset,
 };
 use bevy_app::prelude::*;
 use bevy_asset::{load_internal_asset, Handle};
@@ -301,6 +302,10 @@ impl SpecializedRenderPipeline for DeferredLightingLayout {
             shader_defs.push("MOTION_VECTOR_PREPASS".into());
         }
 
+        if key.contains(MeshPipelineKey::GLOBAL_ILLUMINATION) {
+            shader_defs.push("GLOBAL_ILLUMINATION".into());
+        }
+
         // Always true, since we're in the deferred lighting pipeline
         shader_defs.push("DEFERRED_PREPASS".into());
 
@@ -414,6 +419,7 @@ pub fn prepare_deferred_lighting_pipelines(
             ),
             Has<RenderViewLightProbes<EnvironmentMapLight>>,
             Has<RenderViewLightProbes<IrradianceVolume>>,
+            Option<&GlobalIlluminationSettings>,
         ),
         With<DeferredPrepass>,
     >,
@@ -428,6 +434,7 @@ pub fn prepare_deferred_lighting_pipelines(
         (normal_prepass, depth_prepass, motion_vector_prepass),
         has_environment_maps,
         has_irradiance_volumes,
+        global_illumination,
     ) in &views
     {
         let mut view_key = MeshPipelineKey::from_hdr(view.hdr);
@@ -483,6 +490,10 @@ pub fn prepare_deferred_lighting_pipelines(
 
         if has_irradiance_volumes {
             view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
+        }
+
+        if global_illumination.is_some() {
+            view_key |= MeshPipelineKey::GLOBAL_ILLUMINATION;
         }
 
         match shadow_filter_method.unwrap_or(&ShadowFilteringMethod::default()) {
