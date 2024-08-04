@@ -1,6 +1,6 @@
 use super::{
     asset_binder::AssetBindings, scene_binder::SceneBindings, GlobalIlluminationSettings,
-    SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
+    SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
 };
 use bevy_core_pipeline::prepass::ViewPrepassTextures;
 use bevy_ecs::{
@@ -136,7 +136,7 @@ impl FromWorld for SolariNode {
                     bind_group_layout.clone(),
                 ],
                 push_constant_ranges: vec![],
-                shader: SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
+                shader: SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
                 shader_defs: vec![],
                 entry_point: "sample_direct_diffuse".into(),
             });

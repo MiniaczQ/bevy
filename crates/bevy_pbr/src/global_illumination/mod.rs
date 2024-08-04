@@ -46,8 +46,8 @@ pub mod graph {
     }
 }
 
-const SOLARI_BINDINGS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1717171717171717);
-const SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE: Handle<Shader> =
+const BINDINGS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1717171717171717);
+const SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE: Handle<Shader> =
     Handle::weak_from_u128(3717171717171717);
 
 /// TODO: Docs
@@ -60,13 +60,13 @@ impl Plugin for GlobalIlluminationPlugin {
 
         load_internal_asset!(
             app,
-            SOLARI_BINDINGS_SHADER_HANDLE,
-            "solari_bindings.wgsl",
+            BINDINGS_SHADER_HANDLE,
+            "bindings.wgsl",
             Shader::from_wgsl
         );
         load_internal_asset!(
             app,
-            SOLARI_SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
+            SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
             "sample_direct_diffuse.wgsl",
             Shader::from_wgsl
         );

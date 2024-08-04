@@ -1,6 +1,6 @@
 #import bevy_render::view::View
 #import bevy_render::globals::Globals
-#import bevy_pbr::solari::bindings::{trace_ray, resolve_ray_hit, light_sources, sample_light_sources, trace_light_source, RAY_T_MIN, RAY_T_MAX}
+#import bevy_pbr::global_illumination::bindings::{trace_ray, resolve_ray_hit, light_sources, sample_light_sources, trace_light_source, RAY_T_MIN, RAY_T_MAX}
 #import bevy_pbr::pbr_deferred_types::{unpack_24bit_normal}
 #import bevy_pbr::utils::{PI, rand_f, rand_range_u, octahedral_decode}
 #import bevy_core_pipeline::tonemapping::tonemapping_luminance

@@ -1,4 +1,4 @@
-#define_import_path bevy_pbr::solari::bindings
+#define_import_path bevy_pbr::global_illumination::bindings
 
 #import bevy_pbr::utils::{PI, rand_f, rand_vec2f, rand_range_u}
 
