@@ -53,6 +53,7 @@ pub use extract_param::Extract;
 use bevy_hierarchy::ValidParentCheckPlugin;
 use bevy_window::{PrimaryWindow, RawHandleWrapper};
 use globals::GlobalsPlugin;
+use render_resource::buffer_cache::{update_buffer_cache_system, BufferCache};
 use renderer::{RenderAdapter, RenderAdapterInfo, RenderDevice, RenderQueue};
 
 use crate::deterministic::DeterministicRenderingConfig;
@@ -366,6 +367,11 @@ impl Plugin for RenderPlugin {
                 .insert_resource(queue)
                 .insert_resource(render_adapter)
                 .insert_resource(adapter_info);
+
+            render_app.init_resource::<BufferCache>().add_systems(
+                Render,
+                update_buffer_cache_system.in_set(RenderSet::Cleanup),
+            );
         }
     }
 }

@@ -195,10 +195,11 @@ fn sample_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function,
 
     let r = rand_vec2f(state);
     let cos_theta = (1.0 - r.x) + r.x * cos_theta_max;
-    let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-    let phi = r.y * 2.0 * PI;
-    var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
-    ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
+    // TODO: is this necessary?
+    //let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+    //let phi = r.y * 2.0 * PI;
+    //var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
+    //ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
 
     let irradiance = light.color.rgb * cos_theta;
 
@@ -232,7 +233,9 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, 
 fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
     // https://www.realtimerendering.com/raytracinggems/unofficial_RayTracingGems_v1.9.pdf#0004286901.INDD%3ASec22%3A297
     var barycentrics = rand_vec2f(state);
-    if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
+    // TODO: faster?
+    barycentrics = select(barycentrics, 1.0 - barycentrics, barycentrics.x + barycentrics.y > 1.0);
+    //if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
     let light_hit = resolve_ray_hit_inner(object_id, triangle_id, barycentrics);
 
     let pdf = 1.0 / light_hit.triangle_area;
@@ -249,7 +252,9 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
 
 fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
     var barycentrics = rand_vec2f(state);
-    if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
+    // TODO: faster?
+    barycentrics = select(barycentrics, 1.0 - barycentrics, barycentrics.x + barycentrics.y > 1.0);
+    //if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
     let light_hit = resolve_ray_hit_inner(object_id, triangle_id, barycentrics);
 
     let light_distance = distance(ray_origin, light_hit.world_position);

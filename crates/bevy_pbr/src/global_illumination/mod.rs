@@ -13,7 +13,7 @@ use self::{
     },
     graph::NodeGi,
     scene_binder::{extract_scene, prepare_scene_bindings, ExtractedScene, SceneBindings},
-    surfels::{prepare_view_resources, SolariNode},
+    surfels::{prepare_view_resources, GlobalIlluminationNode},
 };
 use crate::{graph::NodePbr, DefaultOpaqueRendererMethod};
 use bevy_app::{App, Plugin};
@@ -36,6 +36,7 @@ use bevy_render::{
     view::Msaa,
     ExtractSchedule, Render, RenderApp, RenderSet,
 };
+use bevy_utils::tracing::warn;
 
 pub mod graph {
     use bevy_render::render_graph::RenderLabel;
@@ -46,9 +47,9 @@ pub mod graph {
     }
 }
 
+const MAX_SURFELS: u64 = 1024;
 const BINDINGS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1717171717171717);
-const SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE: Handle<Shader> =
-    Handle::weak_from_u128(3717171717171717);
+const SURFELS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_001);
 
 /// TODO: Docs
 pub struct GlobalIlluminationPlugin;
@@ -66,17 +67,22 @@ impl Plugin for GlobalIlluminationPlugin {
         );
         load_internal_asset!(
             app,
-            SAMPLE_DIRECT_DIFFUSE_SHADER_HANDLE,
-            "sample_direct_diffuse.wgsl",
+            SURFELS_SHADER_HANDLE,
+            "surfels.wgsl",
             Shader::from_wgsl
         );
     }
 
     fn finish(&self, app: &mut App) {
         match app.world.get_resource::<RenderDevice>() {
-            Some(render_device) if render_device.features().contains(Self::required_features()) => {
+            Some(render_device) => {
+                if !render_device.features().contains(Self::required_features()) {
+                    let missing = Self::required_features().difference(render_device.features());
+                    warn!(?missing, "Missing features");
+                    return;
+                }
             }
-            _ => return,
+            _ => {}
         }
 
         app.insert_resource(GlobalIlluminationSupported)
@@ -106,7 +112,10 @@ impl Plugin for GlobalIlluminationPlugin {
                 )
                     .run_if(any_with_component::<GlobalIlluminationSettings>),
             )
-            .add_render_graph_node::<ViewNodeRunner<SolariNode>>(Core3d, NodeGi::Surfels)
+            .add_render_graph_node::<ViewNodeRunner<GlobalIlluminationNode>>(
+                Core3d,
+                NodeGi::Surfels,
+            )
             .add_render_graph_edges(
                 Core3d,
                 (
@@ -141,14 +150,10 @@ pub struct GlobalIlluminationSupported;
 // Requires MSAA off, HDR, CameraMainTextureUsages::with_storage_binding(), deferred + depth + motion vector prepass,
 //   DefaultOpaqueRendererMethod::deferred, and should disable shadows for all lights
 #[derive(Component, ExtractComponent, Clone)]
-pub struct GlobalIlluminationSettings {
-    pub debug_path_tracer: bool,
-}
+pub struct GlobalIlluminationSettings;
 
 impl Default for GlobalIlluminationSettings {
     fn default() -> Self {
-        Self {
-            debug_path_tracer: false,
-        }
+        Self
     }
 }

@@ -542,7 +542,7 @@ pub fn prepare_mesh_view_bind_groups(
                 entries.extend_with_indices(((24, transmission_view), (25, transmission_sampler)));
 
             let global_illumination_view = global_illumination_view_resources
-                .map(|r| &r.diffuse.default_view)
+                .map(|r| &r.diffuse_output.default_view)
                 .unwrap_or(&fallback_image_zero_rgba16float.texture_view);
 
             entries = entries.extend_with_indices(((26, global_illumination_view),));

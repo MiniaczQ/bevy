@@ -438,15 +438,24 @@ fn apply_pbr_lighting(
     }
 #endif
 
-#ifdef GLOBAL_ILLUMINATION
-    indirect_light = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
-#endif
+//#ifdef GLOBAL_ILLUMINATION
+//    indirect_light = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
+//#endif
 
     // Total light
     output_color = vec4<f32>(
         view_bindings::view.exposure * (transmitted_light + direct_light + indirect_light + emissive_light),
         output_color.a
     );
+
+//#ifdef GLOBAL_ILLUMINATION
+//    let gi = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy));
+//    output_color = select(output_color, gi, gi.a > 0.0);
+//#endif
+
+#ifdef GLOBAL_ILLUMINATION
+    output_color = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy));
+#endif
 
     output_color = clustering::cluster_debug_visualization(
         output_color,
