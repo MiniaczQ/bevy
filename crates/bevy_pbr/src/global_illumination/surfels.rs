@@ -100,9 +100,8 @@ impl ViewNode for GlobalIlluminationNode {
                 &view_resources.unallocated_surfel_ids_stack,
                 &view_resources.allocated_surfels_bitmap,
                 &view_resources.unallocated_surfels,
-                &view_resources.surfel_position,
-                &view_resources.surfel_normal,
-                &view_resources.surfel_irradiance,
+                &view_resources.surfels_surface,
+                &view_resources.surfels_irradiance,
                 &view_resources.diffuse_output.default_view,
                 &view_resources.surfels_to_allocate,
             )),
@@ -119,9 +118,8 @@ impl ViewNode for GlobalIlluminationNode {
                 &view_resources.unallocated_surfel_ids_stack,
                 &view_resources.allocated_surfels_bitmap,
                 &view_resources.unallocated_surfels,
-                &view_resources.surfel_position,
-                &view_resources.surfel_normal,
-                &view_resources.surfel_irradiance,
+                &view_resources.surfels_surface,
+                &view_resources.surfels_irradiance,
                 &view_resources.diffuse_output.default_view,
             )),
         );
@@ -154,7 +152,7 @@ impl ViewNode for GlobalIlluminationNode {
 
         pass.push_debug_group("surfels_update");
         pass.set_pipeline(update_surfels);
-        pass.dispatch_workgroups(1, 1, 1);
+        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
         pass.pop_debug_group();
 
         pass.push_debug_group("apply_surfel_diffuse");
@@ -203,12 +201,8 @@ impl FromWorld for GlobalIlluminationNode {
                     storage_buffer_sized(false, Some(unsafe { NonZeroU64::new_unchecked(4) })), // stack pointer
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(16 * MAX_SURFELS) }),
-                    ), // position
-                    storage_buffer_sized(
-                        false,
-                        Some(unsafe { NonZeroU64::new_unchecked(16 * MAX_SURFELS) }),
-                    ), // normal
+                        Some(unsafe { NonZeroU64::new_unchecked(48 * MAX_SURFELS) }),
+                    ), // surface
                     storage_buffer_sized(
                         false,
                         Some(unsafe { NonZeroU64::new_unchecked(32 * MAX_SURFELS) }),
@@ -239,12 +233,8 @@ impl FromWorld for GlobalIlluminationNode {
                     storage_buffer_sized(false, Some(unsafe { NonZeroU64::new_unchecked(4) })), // stack pointer
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(16 * MAX_SURFELS) }),
+                        Some(unsafe { NonZeroU64::new_unchecked(48 * MAX_SURFELS) }),
                     ), // position
-                    storage_buffer_sized(
-                        false,
-                        Some(unsafe { NonZeroU64::new_unchecked(16 * MAX_SURFELS) }),
-                    ), // normal
                     storage_buffer_sized(
                         false,
                         Some(unsafe { NonZeroU64::new_unchecked(32 * MAX_SURFELS) }),
@@ -377,20 +367,14 @@ pub fn prepare_view_resources(
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };
-        let surfel_position = BufferDescriptor {
-            label: Some("surfel_position"),
-            size: 16 * MAX_SURFELS,
+        let surfels_surface = BufferDescriptor {
+            label: Some("surfels_surface"),
+            size: 48 * MAX_SURFELS,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };
-        let surfel_normal = BufferDescriptor {
-            label: Some("surfel_normal"),
-            size: 16 * MAX_SURFELS,
-            usage: BufferUsages::STORAGE,
-            mapped_at_creation: false,
-        };
-        let surfel_irradiance = BufferDescriptor {
-            label: Some("surfel_irradiance"),
+        let surfels_irradiance = BufferDescriptor {
+            label: Some("surfels_irradiance"),
             size: 32 * MAX_SURFELS,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
@@ -431,9 +415,8 @@ pub fn prepare_view_resources(
         let allocated_surfels_bitmap = buffer_cache.get(&render_device, allocated_surfels_bitmap);
         let unallocated_surfels =
             buffer_cache.get_or(&render_device, unallocated_surfels, init_stack_ptr);
-        let surfel_position = buffer_cache.get(&render_device, surfel_position);
-        let surfel_normal = buffer_cache.get(&render_device, surfel_normal);
-        let surfel_irradiance = buffer_cache.get(&render_device, surfel_irradiance);
+        let surfels_surface = buffer_cache.get(&render_device, surfels_surface);
+        let surfel_irradiance = buffer_cache.get(&render_device, surfels_irradiance);
         let diffuse_output = texture_cache.get(&render_device, diffuse_output);
         let surfels_to_allocate = buffer_cache.get(&render_device, surfels_to_allocate);
 
@@ -443,9 +426,8 @@ pub fn prepare_view_resources(
                 unallocated_surfel_ids_stack,
                 allocated_surfels_bitmap,
                 unallocated_surfels,
-                surfel_position,
-                surfel_normal,
-                surfel_irradiance,
+                surfels_surface,
+                surfels_irradiance: surfel_irradiance,
                 diffuse_output,
                 surfels_to_allocate,
             });
@@ -457,9 +439,8 @@ pub struct GlobalIlluminationViewResources {
     pub unallocated_surfel_ids_stack: CachedBuffer,
     pub allocated_surfels_bitmap: CachedBuffer,
     pub unallocated_surfels: CachedBuffer,
-    pub surfel_position: CachedBuffer,
-    pub surfel_normal: CachedBuffer,
-    pub surfel_irradiance: CachedBuffer,
+    pub surfels_surface: CachedBuffer,
+    pub surfels_irradiance: CachedBuffer,
     pub surfels_to_allocate: CachedBuffer,
     pub diffuse_output: CachedTexture,
 }
