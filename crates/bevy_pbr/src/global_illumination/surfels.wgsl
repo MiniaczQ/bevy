@@ -1,8 +1,9 @@
 #import bevy_render::view::View
 #import bevy_render::globals::Globals
-#import bevy_pbr::utils::{rand_vec2f, hsv2rgb, octahedral_decode}
+#import bevy_pbr::utils::{PI, rand_f, rand_vec2f, hsv2rgb, octahedral_decode, rand_range_u}
 #import bevy_pbr::pbr_deferred_types::unpack_24bit_normal
-#import bevy_pbr::global_illumination::bindings::{sample_cosine_hemisphere, trace_ray, resolve_ray_hit, depth_to_world_position}
+#import bevy_pbr::global_illumination::bindings::{trace_ray, resolve_ray_hit, depth_to_world_position, light_sources, first_hit_ray_trace, LightSample, sample_directional_light, sample_emissive_triangle, trace_directional_light, trace_emissive_triangle, LIGHT_SOURCE_DIRECTIONAL}
+#import bevy_core_pipeline::tonemapping::tonemapping_luminance
 
 struct SurfelSurface {
     position: vec3<f32>,
@@ -16,14 +17,35 @@ struct SurfelIrradiance {
     probes: u32,
 }
 
+struct Reservoir {
+    light_id: u32,
+    light_rng: u32,
+    light_weight: f32,
+    weight_sum: f32,
+    sample_count: u32
+}
+
+// Max amount of surfels. Has to be the same value as Rust-side shader code.
 const MAX_SURFELS: u32 = 1024u;
+// Size of surfel bitmap. [MAX_SURFELS / 32]
 const SURFEL_MAP_BITS: u32 = 32u;
-const MAX_SPAWNS: u32 = 64u;
+// How many surfels can be spawned each frame at most.
+const MAX_SPAWNS: u32 = 32u;
 
-const SURFEL_AVG_PROBES: u32 = 32u;
+// How many lights (and surfels) are sampled by each surfel each frame.
+const LIGHT_SAMPLES: u32 = 128u;
+// Chance of sampling a surfel instead of an actual light source.
+const SAMPLE_SURFEL_CHANCE: f32 = 0.5;
+// Probability distribution sample of a surfel. Cannot use 0.0 because of singularity.
+const SURFEL_PDF: f32 = 100.0;
 
+// How many samples get averaged by each surfel over time. Higher values mean slower changes, but less flickering.
+const SURFEL_AVG_PROBES: u32 = 128u;
+
+// Range at which surfels light surrounding pixels.
+const AFFECTION_RANGE: f32 = 0.2;
+// Size of surfels in the debug view.
 const DEBUG_SURFEL_SIZE: f32 = 0.0078125;
-const AFFECTION_RANGE: f32 = 0.1;
 
 @group(2) @binding(0) var<uniform> view: View;
 @group(2) @binding(1) var<uniform> globals: Globals;
@@ -106,6 +128,65 @@ fn update_one_surfel(surfel: ptr<function, SurfelIrradiance>, irradiance: vec3<f
     (*surfel).mean_squared += delta * delta2;
 }
 
+fn update_reservoir(reservoir: ptr<function, Reservoir>, light_id: u32, light_rng: u32, light_weight: f32, rng: ptr<function, u32>) {
+    (*reservoir).weight_sum += light_weight;
+    (*reservoir).sample_count += 1u;
+    if rand_f(rng) < light_weight / (*reservoir).weight_sum {
+        (*reservoir).light_id = light_id;
+        (*reservoir).light_rng = light_rng;
+    }
+}
+
+fn sample_surfel_or_light_source(id: u32, light_count: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
+    var sample: LightSample;
+
+    if id < MAX_SURFELS {
+        let surfel_id = id;
+        let surfel_surface = surfels_surface[surfel_id];
+        let surfel_irradiance = surfels_irradiance[surfel_id];
+        let ray_direction = surfel_surface.position - ray_origin;
+        let distance = length(ray_direction);
+        var irradiance = surfel_surface.color * surfel_irradiance.mean;
+        irradiance = irradiance / (1 + distance * distance);
+        sample = LightSample(irradiance, SURFEL_PDF);
+    } else {
+        let light_id = id - MAX_SURFELS;
+        let light = light_sources[light_id];
+        if light.kind == LIGHT_SOURCE_DIRECTIONAL {
+            sample = sample_directional_light(light.id, ray_origin, state);
+        } else {
+            sample = sample_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
+        }
+    }
+
+    sample.pdf /= f32(light_count);
+    return sample;
+}
+
+fn trace_surfel_or_light_source(id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
+    // Surfels are virtual lights.
+    if id < MAX_SURFELS {
+        let surfel_id = id;
+        let surfel_surface = surfels_surface[surfel_id];
+        let surfel_irradiance = surfels_irradiance[surfel_id];
+        let ray_direction = surfel_surface.position - ray_origin;
+        let ray_hit = first_hit_ray_trace(ray_origin, ray_direction);
+        let light_visible = f32(dot(ray_direction, surfel_surface.normal) < 0.0 && ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
+        let distance = length(ray_direction);
+        var irradiance = surfel_surface.color * surfel_irradiance.mean;
+        irradiance = irradiance / (1 + distance * distance);
+        return irradiance * light_visible;
+    } else {
+        let light_id = id - MAX_SURFELS;
+        let light = light_sources[light_id];
+        if light.kind == LIGHT_SOURCE_DIRECTIONAL {
+            return trace_directional_light(light.id, ray_origin, state);
+        } else {
+            return trace_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
+        }
+    }
+}
+
 /// Updates the diffuse of each surfel.
 @compute @workgroup_size(32)
 fn update_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -115,9 +196,29 @@ fn update_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let surfel_surface = surfels_surface[id];
     var surfel_irradiance = surfels_irradiance[id];
     var rng = globals.frame_count * MAX_SURFELS + global_id.x;
-    var irradiance = vec3<f32>(1.0);
 
-    //var rng2 = rng;
+    let brdf = surfel_surface.color / PI;
+
+    var reservoir = Reservoir(0u, 0u, 0.0, 0.0, 0u);
+    let light_count = arrayLength(&light_sources);
+    for (var i = 0u; i < LIGHT_SAMPLES; i++) {
+        let light_id = select(MAX_SURFELS + rand_range_u(light_count, &rng), rand_range_u(MAX_SURFELS, &rng), rand_f(&rng) < SAMPLE_SURFEL_CHANCE);
+        let light_rng = rng;
+        let sample = sample_surfel_or_light_source(light_id, light_count + MAX_SURFELS, surfel_surface.position, surfel_surface.normal, &rng);
+        let target_pdf = tonemapping_luminance(sample.irradiance * brdf);
+        let light_weight = target_pdf / sample.pdf;
+
+        update_reservoir(&reservoir, light_id, light_rng, light_weight, &rng);
+    }
+
+    rng = reservoir.light_rng;
+    var irradiance = trace_surfel_or_light_source(reservoir.light_id, surfel_surface.position, surfel_surface.normal, &rng);
+
+    let target_pdf = tonemapping_luminance(irradiance * brdf);
+    let w = reservoir.weight_sum / (target_pdf * f32(reservoir.sample_count));
+    reservoir.light_weight = select(0.0, w, target_pdf > 0.0);
+
+    irradiance *= reservoir.light_weight;
     
     update_one_surfel(&surfel_irradiance, irradiance);
     surfels_irradiance[id] = surfel_irradiance;
@@ -133,7 +234,9 @@ fn apply_surfel_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let pixel_uv = (vec2<f32>(global_id.xy) + 0.5) / view.viewport.zw;
     let world_pos = depth_to_world_position(depth, pixel_uv);
-    let view_dis = distance(view.world_position, world_pos);
+    let view_distance = distance(view.world_position, world_pos);
+    let gpixel = textureLoad(gbuffer, global_id.xy, 0i);
+    let base_color = pow(unpack4x8unorm(gpixel.r).rgb, vec3(2.2));
     
     var lighting = vec3<f32>(0.0);
     var total_weight = 0.0;
@@ -141,13 +244,14 @@ fn apply_surfel_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
         if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { continue; } // Surfel not active
 
         let surfel_surface = surfels_surface[id];
-        let distance = distance(world_pos, surfel_surface.position);
-        let weight = max(view_dis * AFFECTION_RANGE - distance, 0.0);
-        lighting += surfels_irradiance[id].mean * weight;
+        let surfel_distance = distance(world_pos, surfel_surface.position);
+        let weight = max(view_distance * AFFECTION_RANGE - surfel_distance, 0.0);
+        lighting += surfels_irradiance[id].mean * weight * surfel_surface.color;
         total_weight += weight;
     }
 
     lighting = select(lighting, lighting / total_weight, total_weight > 0.0);
+    lighting *= base_color;
 
     textureStore(diffuse_output, global_id.xy, vec4<f32>(lighting, 1.0));
 }

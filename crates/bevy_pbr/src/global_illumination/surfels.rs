@@ -234,7 +234,7 @@ impl FromWorld for GlobalIlluminationNode {
                     storage_buffer_sized(
                         false,
                         Some(unsafe { NonZeroU64::new_unchecked(48 * MAX_SURFELS) }),
-                    ), // position
+                    ), // surface
                     storage_buffer_sized(
                         false,
                         Some(unsafe { NonZeroU64::new_unchecked(32 * MAX_SURFELS) }),

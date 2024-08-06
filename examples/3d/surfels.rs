@@ -41,19 +41,19 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         ..default()
     });
 
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_rotation(Quat::from_euler(
-            EulerRot::XYZ,
-            PI * -0.43,
-            PI * -0.08,
-            0.0,
-        )),
-        ..default()
-    });
+    //commands.spawn(DirectionalLightBundle {
+    //    directional_light: DirectionalLight {
+    //        shadows_enabled: true,
+    //        ..default()
+    //    },
+    //    transform: Transform::from_rotation(Quat::from_euler(
+    //        EulerRot::XYZ,
+    //        PI * -0.43,
+    //        PI * -0.08,
+    //        0.0,
+    //    )),
+    //    ..default()
+    //});
 
     commands.spawn((
         Camera3dBundle {
