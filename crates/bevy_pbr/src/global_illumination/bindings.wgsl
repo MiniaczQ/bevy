@@ -191,7 +191,7 @@ struct LightSample {
 
 // https://en.wikipedia.org/wiki/Angular_diameter#Use_in_astronomy
 // https://www.realtimerendering.com/raytracinggems/unofficial_RayTracingGems_v1.9.pdf#0004286901.INDD%3ASec30%3A305
-fn sample_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, u32>) -> LightSample {
+fn sample_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
     let light = directional_lights[id];
 
     // Angular diameter of the sun projected onto a disk as viewed from earth = ~0.5 degrees
@@ -203,18 +203,22 @@ fn sample_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function,
 
     let r = rand_vec2f(state);
     let cos_theta = (1.0 - r.x) + r.x * cos_theta_max;
-    // TODO: is this necessary?
-    //let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-    //let phi = r.y * 2.0 * PI;
-    //var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
-    //ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
+    let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+    let phi = r.y * 2.0 * PI;
+    var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
+    ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
 
-    let irradiance = light.color.rgb * cos_theta;
+    // No attenuation
+
+    // Diffuse
+    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
+
+    let irradiance = light.color.rgb * cos_theta * cos_theta_origin;
 
     return LightSample(irradiance, pdf);
 }
 
-fn trace_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
+fn trace_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
     let light = directional_lights[id];
 
     let cos_theta_max = 0.99999048072;
@@ -233,7 +237,12 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, state: ptr<function, 
     let ray_hit = rayQueryGetCommittedIntersection(&rq);
     let light_visible = f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
 
-    let irradiance = light.color.rgb * cos_theta;
+    // No attenuation
+
+    // Diffuse
+    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
+
+    let irradiance = light.color.rgb * cos_theta * cos_theta_origin;
 
     return irradiance * light_visible;
 }
@@ -250,9 +259,14 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
 
     let light_distance = distance(ray_origin, light_hit.world_position);
     let ray_direction = (light_hit.world_position - ray_origin) / light_distance;
-    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
+
+    // Attenuation
     let light_distance_squared = light_distance * light_distance;
+
+    // Diffuse
+    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
+
     let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
 
     return LightSample(irradiance, pdf);
@@ -267,9 +281,14 @@ fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f3
 
     let light_distance = distance(ray_origin, light_hit.world_position);
     let ray_direction = (light_hit.world_position - ray_origin) / light_distance;
-    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
+
+    // Attenuation
     let light_distance_squared = light_distance * light_distance;
+
+    // Diffuse
+    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
+
     let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
 
     let ray_t_max = light_distance - RAY_T_MIN;
@@ -288,7 +307,7 @@ fn sample_light_sources(light_id: u32, light_count: u32, ray_origin: vec3<f32>, 
 
     var sample: LightSample;
     if light.kind == LIGHT_SOURCE_DIRECTIONAL {
-        sample = sample_directional_light(light.id, ray_origin, state);
+        sample = sample_directional_light(light.id, ray_origin, origin_world_normal, state);
     } else {
         sample = sample_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
     }
@@ -301,7 +320,7 @@ fn sample_light_sources(light_id: u32, light_count: u32, ray_origin: vec3<f32>, 
 fn trace_light_source(light_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
     let light = light_sources[light_id];
     if light.kind == LIGHT_SOURCE_DIRECTIONAL {
-        return trace_directional_light(light.id, ray_origin, state);
+        return trace_directional_light(light.id, ray_origin, origin_world_normal, state);
     } else {
         return trace_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
     }

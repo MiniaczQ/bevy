@@ -61,12 +61,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 hdr: true,
                 ..default()
             },
-            transform: Transform::from_matrix(Mat4 {
-                x_axis: Vec4::new(0.99480534, 0.0, -0.10179563, 0.0),
-                y_axis: Vec4::new(-0.019938117, 0.98063105, -0.19484669, 0.0),
-                z_axis: Vec4::new(0.09982395, 0.19586414, 0.975537, 0.0),
-                w_axis: Vec4::new(0.68394995, 2.2785425, 6.68395, 1.0),
-            }),
+            transform: Transform::from_xyz(0.0, 1.5, 5.0).looking_to(-Vec3::Z, Vec3::Y),
             main_texture_usages: CameraMainTextureUsages::with_storage_binding(),
             ..default()
         },

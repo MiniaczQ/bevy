@@ -438,8 +438,9 @@ fn apply_pbr_lighting(
     }
 #endif
 
+// Correct usage
 #ifdef GLOBAL_ILLUMINATION
-    indirect_light = max(indirect_light, textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb);
+   indirect_light += textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
 #endif
 
     // Total light
@@ -448,11 +449,13 @@ fn apply_pbr_lighting(
         output_color.a
     );
 
+// Debug surfel view (splats)
 //#ifdef GLOBAL_ILLUMINATION
 //    let gi = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy));
 //    output_color = select(output_color, gi, gi.a > 0.0);
 //#endif
 
+// Just surfel lighting
 //#ifdef GLOBAL_ILLUMINATION
 //    output_color = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy));
 //#endif
