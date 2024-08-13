@@ -47,7 +47,7 @@ pub mod graph {
     }
 }
 
-const MAX_SURFELS: u64 = 1024;
+const MAX_SURFELS: u64 = 2048;
 const BINDINGS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1717171717171717);
 const SURFELS_SHADER_HANDLE: Handle<Shader> = Handle::weak_from_u128(1_531_537_373_001);
 

@@ -172,10 +172,10 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
         pass.pop_debug_group();
 
-        //pass.push_debug_group("debug_surfels_view");
-        //pass.set_pipeline(debug_surfels_view);
-        //pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
-        //pass.pop_debug_group();
+        // pass.push_debug_group("debug_surfels_view");
+        // pass.set_pipeline(debug_surfels_view);
+        // pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
+        // pass.pop_debug_group();
 
         pass.push_debug_group("despawn_surfels");
         pass.set_pipeline(despawn_surfels);
@@ -221,7 +221,7 @@ impl FromWorld for GlobalIlluminationNode {
                     ), // irradiance
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(18 * 18 * 65 * 4) }),
+                        Some(unsafe { NonZeroU64::new_unchecked(16 * 16 * 257 * 4) }),
                     ), // cache
                     storage_buffer_sized(
                         false,
@@ -261,7 +261,7 @@ impl FromWorld for GlobalIlluminationNode {
                     ), // irradiance
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(18 * 18 * 65 * 4) }),
+                        Some(unsafe { NonZeroU64::new_unchecked(16 * 16 * 257 * 4) }),
                     ), // cache
                     storage_buffer_sized(
                         false,
@@ -424,7 +424,7 @@ pub fn prepare_view_resources(
         };
         let surfel_cache = BufferDescriptor {
             label: Some("surfel_cache"),
-            size: 18 * 18 * 65 * 4,
+            size: 16 * 16 * 257 * 4,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };
