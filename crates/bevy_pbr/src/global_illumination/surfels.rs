@@ -25,14 +25,14 @@ use buffer_cache::{BufferCache, CachedBuffer};
 
 pub struct GlobalIlluminationNode {
     bind_group_layout: BindGroupLayout,
-    initialize_surfel_cache: CachedComputePipelineId,
-    prepare_surfel_allocations: CachedComputePipelineId,
+    cache_surfels_1x1: CachedComputePipelineId,
+    despawn_surfels_high_density: CachedComputePipelineId,
+    despawn_surfels_low_usage: CachedComputePipelineId,
     spawn_surfels: CachedComputePipelineId,
-    extend_surfel_cache: CachedComputePipelineId,
+    cache_surfels_5x5: CachedComputePipelineId,
     update_surfels: CachedComputePipelineId,
     apply_surfel_diffuse: CachedComputePipelineId,
     debug_surfels_view: CachedComputePipelineId,
-    despawn_surfels: CachedComputePipelineId,
 }
 
 impl ViewNode for GlobalIlluminationNode {
@@ -58,14 +58,14 @@ impl ViewNode for GlobalIlluminationNode {
         let view_uniforms = world.resource::<ViewUniforms>();
         let globals_uniforms = world.resource::<GlobalsBuffer>();
         let (
-            Some(initialize_surfel_cache),
-            Some(prepare_surfel_allocations),
+            Some(cache_surfels_1x1),
+            Some(despawn_surfels_high_density),
+            Some(despawn_surfels_low_usage),
             Some(spawn_surfels),
-            Some(extend_surfel_cache),
+            Some(cache_surfels_5x5),
             Some(update_surfels),
             Some(apply_surfel_diffuse),
             Some(debug_surfels_view),
-            Some(despawn_surfels),
             Some(asset_bind_group),
             Some(scene_bind_group),
             Some(viewport),
@@ -74,14 +74,14 @@ impl ViewNode for GlobalIlluminationNode {
             Some(view_uniforms),
             Some(globals_uniforms),
         ) = (
-            pipeline_cache.get_compute_pipeline(self.initialize_surfel_cache),
-            pipeline_cache.get_compute_pipeline(self.prepare_surfel_allocations),
+            pipeline_cache.get_compute_pipeline(self.cache_surfels_1x1),
+            pipeline_cache.get_compute_pipeline(self.despawn_surfels_high_density),
+            pipeline_cache.get_compute_pipeline(self.despawn_surfels_low_usage),
             pipeline_cache.get_compute_pipeline(self.spawn_surfels),
-            pipeline_cache.get_compute_pipeline(self.extend_surfel_cache),
+            pipeline_cache.get_compute_pipeline(self.cache_surfels_5x5),
             pipeline_cache.get_compute_pipeline(self.update_surfels),
             pipeline_cache.get_compute_pipeline(self.apply_surfel_diffuse),
             pipeline_cache.get_compute_pipeline(self.debug_surfels_view),
-            pipeline_cache.get_compute_pipeline(self.despawn_surfels),
             &asset_bindings.bind_group,
             &scene_bindings.bind_group,
             camera.physical_viewport_size,
@@ -124,14 +124,19 @@ impl ViewNode for GlobalIlluminationNode {
         pass.set_bind_group(1, scene_bind_group, &[]);
         pass.set_bind_group(2, &bind_group, &[view_uniform_offset.offset]);
 
-        pass.push_debug_group("initialize_surfel_cache");
-        pass.set_pipeline(initialize_surfel_cache);
+        pass.push_debug_group("cache_surfels_1x1");
+        pass.set_pipeline(cache_surfels_1x1);
         pass.dispatch_workgroups(1, 1, 1);
         pass.pop_debug_group();
 
-        pass.push_debug_group("prepare_surfel_allocations");
-        pass.set_pipeline(prepare_surfel_allocations);
+        pass.push_debug_group("despawn_surfels_high_density");
+        pass.set_pipeline(despawn_surfels_high_density);
         pass.dispatch_workgroups(1, 1, 1);
+        pass.pop_debug_group();
+
+        pass.push_debug_group("despawn_surfels_low_usage");
+        pass.set_pipeline(despawn_surfels_low_usage);
+        pass.dispatch_workgroups(MAX_SURFELS as u32, 1, 1);
         pass.pop_debug_group();
 
         pass.push_debug_group("spawn_surfels");
@@ -139,8 +144,8 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups(1, 1, 1);
         pass.pop_debug_group();
 
-        pass.push_debug_group("extend_surfel_cache");
-        pass.set_pipeline(extend_surfel_cache);
+        pass.push_debug_group("cache_surfels_5x5");
+        pass.set_pipeline(cache_surfels_5x5);
         pass.dispatch_workgroups(1, 1, 1);
         pass.pop_debug_group();
 
@@ -157,11 +162,6 @@ impl ViewNode for GlobalIlluminationNode {
         pass.push_debug_group("debug_surfels_view");
         pass.set_pipeline(debug_surfels_view);
         pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
-        pass.pop_debug_group();
-
-        pass.push_debug_group("despawn_surfels");
-        pass.set_pipeline(despawn_surfels);
-        pass.dispatch_workgroups(MAX_SURFELS as u32, 1, 1);
         pass.pop_debug_group();
 
         Ok(())
@@ -210,17 +210,27 @@ impl FromWorld for GlobalIlluminationNode {
                         Some(unsafe { NonZeroU64::new_unchecked(4 * MAX_SURFELS) }),
                     ), // usage
                     texture_storage_2d(TextureFormat::Rgba16Float, StorageTextureAccess::ReadWrite), // output
-                    storage_buffer_sized(
-                        false,
-                        Some(unsafe { NonZeroU64::new_unchecked(4 * 258) }),
-                    ), // allocation_context
+                    storage_buffer_sized(false, Some(unsafe { NonZeroU64::new_unchecked(4) })), // allocation_context
                 ),
             ),
         );
 
-        let initialize_surfel_cache =
+        let cache_surfels_1x1 = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: Some("cache_surfels_1x1_pipeline".into()),
+            layout: vec![
+                asset_bindings.bind_group_layout.clone(),
+                scene_bindings.bind_group_layout.clone(),
+                bind_group_layout.clone(),
+            ],
+            push_constant_ranges: vec![],
+            shader: SURFELS_SHADER_HANDLE,
+            shader_defs: vec![],
+            entry_point: "cache_surfels_1x1".into(),
+        });
+
+        let despawn_surfels_high_density =
             pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: Some("initialize_surfel_cache_pipeline".into()),
+                label: Some("despawn_surfels_high_density_pipeline".into()),
                 layout: vec![
                     asset_bindings.bind_group_layout.clone(),
                     scene_bindings.bind_group_layout.clone(),
@@ -228,13 +238,13 @@ impl FromWorld for GlobalIlluminationNode {
                 ],
                 push_constant_ranges: vec![],
                 shader: SURFELS_SHADER_HANDLE,
-                shader_defs: vec![],
-                entry_point: "initialize_surfel_cache".into(),
+                shader_defs: vec!["ATOMIC_BITMAP".into()],
+                entry_point: "despawn_surfels_high_density".into(),
             });
 
-        let prepare_surfel_allocations =
+        let despawn_surfels_low_usage =
             pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: Some("prepare_surfel_allocations_pipeline".into()),
+                label: Some("despawn_surfels_low_usage_pipeline".into()),
                 layout: vec![
                     asset_bindings.bind_group_layout.clone(),
                     scene_bindings.bind_group_layout.clone(),
@@ -242,8 +252,8 @@ impl FromWorld for GlobalIlluminationNode {
                 ],
                 push_constant_ranges: vec![],
                 shader: SURFELS_SHADER_HANDLE,
-                shader_defs: vec![],
-                entry_point: "prepare_surfel_allocations".into(),
+                shader_defs: vec!["ATOMIC_BITMAP".into()],
+                entry_point: "despawn_surfels_low_usage".into(),
             });
 
         let spawn_surfels = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -259,19 +269,18 @@ impl FromWorld for GlobalIlluminationNode {
             entry_point: "spawn_surfels".into(),
         });
 
-        let extend_surfel_cache =
-            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-                label: Some("extend_surfel_cache_pipeline".into()),
-                layout: vec![
-                    asset_bindings.bind_group_layout.clone(),
-                    scene_bindings.bind_group_layout.clone(),
-                    bind_group_layout.clone(),
-                ],
-                push_constant_ranges: vec![],
-                shader: SURFELS_SHADER_HANDLE,
-                shader_defs: vec![],
-                entry_point: "extend_surfel_cache".into(),
-            });
+        let cache_surfels_5x5 = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+            label: Some("cache_surfels_5x5_pipeline".into()),
+            layout: vec![
+                asset_bindings.bind_group_layout.clone(),
+                scene_bindings.bind_group_layout.clone(),
+                bind_group_layout.clone(),
+            ],
+            push_constant_ranges: vec![],
+            shader: SURFELS_SHADER_HANDLE,
+            shader_defs: vec![],
+            entry_point: "cache_surfels_5x5".into(),
+        });
 
         let update_surfels = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
             label: Some("update_surfels_pipeline".into()),
@@ -313,29 +322,16 @@ impl FromWorld for GlobalIlluminationNode {
             entry_point: "debug_surfels_view".into(),
         });
 
-        let despawn_surfels = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-            label: Some("despawn_surfels_pipeline".into()),
-            layout: vec![
-                asset_bindings.bind_group_layout.clone(),
-                scene_bindings.bind_group_layout.clone(),
-                bind_group_layout.clone(),
-            ],
-            push_constant_ranges: vec![],
-            shader: SURFELS_SHADER_HANDLE,
-            shader_defs: vec!["ATOMIC_BITMAP".into()],
-            entry_point: "despawn_surfels".into(),
-        });
-
         Self {
             bind_group_layout,
-            initialize_surfel_cache,
-            prepare_surfel_allocations,
+            cache_surfels_1x1,
+            despawn_surfels_high_density,
+            despawn_surfels_low_usage,
             spawn_surfels,
-            extend_surfel_cache,
+            cache_surfels_5x5,
             update_surfels,
             apply_surfel_diffuse,
             debug_surfels_view,
-            despawn_surfels,
         }
     }
 }
@@ -410,7 +406,7 @@ pub fn prepare_view_resources(
         };
         let surfel_allocation_context = BufferDescriptor {
             label: Some("surfel_allocation_context"),
-            size: 4 * 258,
+            size: 4,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };

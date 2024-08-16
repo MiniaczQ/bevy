@@ -26,22 +26,23 @@ struct Reservoir {
     sample_count: u32
 }
 
-struct CacheCell {
-    // How many surfels are contained within the cell
+struct SurfelCacheCell {
     count: u32,
-    // Max amount of surfels in a cell
-    // With 2048 surfels uniformly distributed across 16*16 cells, we get 8 surfels per cell; with each cell storing information in 5*5 zone, that's 200 surfels on average.
+    // Surfels contained withing some kernel.
+    // For allocations this is 1x1. (8 on average)
+    // For pixel lookup this is 5x5. (200 on average)
     ids: array<u32, 256>,
 }
 
-struct AllocationContext {
-    cells: array<array<u32, 16>, 16>,
-    allocated_so_far: atomic<u32>,
-    max_allocations: u32,
+struct SurfelAllocationContext {
+    allocations_left: f32,
 }
 
-// `CacheCell::ids` size minus one.
+// `SurfelCacheCell::ids` size minus one.
 const SURFEL_CACHE_MAX_IDX: u32 = 255u;
+
+const SPAWN_IF_LESS: i32 = 7;
+const DESPAWN_IF_MORE: i32 = 9;
 
 // Max amount of surfels. Has to be the same value as Rust-side shader code.
 const MAX_SURFELS: u32 = 2048u;
@@ -84,7 +85,7 @@ const DEBUG_SURFEL_SIZE: f32 = 0.0075;
 @group(2) @binding(8) var<storage, read_write> surfels_irradiance: array<SurfelIrradiance, MAX_SURFELS>;
 
 // Screen space cache with 16x16 cells, each cell collects data in a 3x3 cell zone
-@group(2) @binding(9) var<storage, read_write> surfel_cache: array<array<CacheCell, 16>, 16>;
+@group(2) @binding(9) var<storage, read_write> surfel_cache: array<array<SurfelCacheCell, 16>, 16>;
 
 // Surfel usage count, used as a metric to delete surfels
 #ifdef ATOMIC_USAGE
@@ -96,71 +97,79 @@ const DEBUG_SURFEL_SIZE: f32 = 0.0075;
 @group(2) @binding(11) var diffuse_output: texture_storage_2d<rgba16float, read_write>;
 
 // Buffer for indirect dispatch.
-@group(2) @binding(12) var<storage, read_write> surfel_allocation_context: AllocationContext;
+@group(2) @binding(12) var<storage, read_write> surfel_allocation_context: SurfelAllocationContext;
 
-/// Fill screen-space acceleration structure
+/// Store surfel occupancy in a 1x1 kernel.
 @compute @workgroup_size(16, 16)
-fn initialize_surfel_cache(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn cache_surfels_1x1(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let cache_xy = global_id.xy;
-    var count = 0u;
-    var allo_count = 0u;
-
-    // Gather surfels in 5x5 cell area.
     let cache_xy_f32 = vec2<f32>(cache_xy);
-    let cell_min = (cache_xy_f32 - 10.0) / 8.0;
-    let cell_max = (cache_xy_f32 - 5.0) / 8.0;
-    
-    // Gather surfels in 1x1 cell area for distributing allocations.
-    let allo_cell_min = (cache_xy_f32 - 8.0) / 8.0;
-    let allo_cell_max = (cache_xy_f32 - 7.0) / 8.0;
+    let cell_min = (cache_xy_f32 - 8.0) / 8.0;
+    let cell_max = (cache_xy_f32 - 7.0) / 8.0;
 
+    var count = 0u;
     for (var id = 0u; id < MAX_SURFELS; id++) {
         let is_active = (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) != 0;
 
         let surfel_surface = surfels_surface[id];
         let ndc = world_to_ndc(surfel_surface.position);
-        let is_within_cell = cell_min.x <= ndc.x && ndc.x <= cell_max.x && cell_min.y <= ndc.y && ndc.y <= cell_max.y;
+        let is_within_cell = cell_min.x < ndc.x && ndc.x <= cell_max.x && cell_min.y < ndc.y && ndc.y <= cell_max.y;
 
         let is_correct = is_active && is_within_cell;
 
         let prev_id = surfel_cache[cache_xy.x][cache_xy.y].ids[count];
         surfel_cache[cache_xy.x][cache_xy.y].ids[count] = select(prev_id, id, is_correct);
         count = min(count + u32(is_correct), SURFEL_CACHE_MAX_IDX);
-
-        let is_within_allo_cell = allo_cell_min.x <= ndc.x && ndc.x <= allo_cell_max.x && allo_cell_min.y <= ndc.y && ndc.y <= allo_cell_max.y;
-        allo_count += u32(is_active && is_within_allo_cell);
     }
 
     surfel_cache[cache_xy.x][cache_xy.y].count = count;
-    surfel_allocation_context.cells[cache_xy.x][cache_xy.y] = allo_count;
 }
 
-/// Preprocesses data for spawning new surfels.
+#ifdef ATOMIC_BITMAP
+/// Deallocates one specific surfel.
+///
+/// SAFETY: Only call if the ID is allocated.
+fn deallocate_surfel(id: u32) {
+    let idx = atomicAdd(&unallocated_surfels, 1u);
+    unallocated_surfel_ids_stack[idx] = id;
+
+    let bin = id / 32u;
+    let bit = id % 32u;
+    atomicAnd(&allocated_surfels_bitmap[bin], ~(1u << bit));
+}
+
+// Attempts to despawn surfels that are too dense.
+@compute @workgroup_size(16, 16)
+fn despawn_surfels_high_density(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let cache_xy = global_id.xy;
+    var rng = globals.frame_count * 256 + global_id.x * 16 + global_id.y;
+
+    var count = surfel_cache[cache_xy.x][cache_xy.y].count;
+    let try_deallocate_n = i32(count) - DESPAWN_IF_MORE;
+
+    for (var i = 0; i < try_deallocate_n; i++) {
+        let removed_idx = rand_range_u(count, &rng);
+        let removed_id = surfel_cache[cache_xy.x][cache_xy.y].ids[removed_idx];
+        count -= 1u;
+        surfel_cache[cache_xy.x][cache_xy.y].ids[removed_idx] = surfel_cache[cache_xy.x][cache_xy.y].ids[count];
+        deallocate_surfel(removed_id);
+    }
+}
+
+// Attempts to despawn surfels that don't contribute much to the final image.
 @compute @workgroup_size(1)
-fn prepare_surfel_allocations() {
-    if globals.frame_count < 100 {
+fn despawn_surfels_low_usage(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    var id = global_id.x;
+    if (atomicLoad(&allocated_surfels_bitmap[id / 32u]) & (1u << (id % 32u))) == 0u {
+        // Not active.
         return;
     }
-    let allocations_left = atomicLoad(&unallocated_surfels);
-    let target_count = 8u;
-    var total_diff = 0u;
-    for (var x = 0u; x < 16u; x++) {
-        for (var y = 0u; y < 16u; y++) {
-            let count = surfel_allocation_context.cells[x][y];
-            let diff = select(0u, target_count - count, count < target_count);
-            surfel_allocation_context.cells[x][y] = diff;
-            total_diff += diff;
-        }
+    if surfel_usage[id] <= 0u {
+        deallocate_surfel(id);
     }
-    for (var x = 0u; x < 16u; x++) {
-        for (var y = 0u; y < 16u; y++) {
-            let diff = surfel_allocation_context.cells[x][y];
-            surfel_allocation_context.cells[x][y] = (diff * allocations_left) / total_diff;
-        }
-    }
-    surfel_allocation_context.max_allocations = allocations_left;
-    atomicStore(&surfel_allocation_context.allocated_so_far, 0u);
+    surfel_usage[id] = 0u;
 }
+#endif // ATOMIC_BITMAP
 
 #ifdef ATOMIC_BITMAP
 /// Attempts to allocate a new surfel and returns it's ID.
@@ -176,25 +185,34 @@ fn allocate_surfel() -> u32 {
     return id;
 }
 
-/// Attempts to spawn a single surfel through a random raycast into the scene.
+var<workgroup> allocations_left: atomic<i32>;
+
+/// Attempts to spawn surfels to meet the average per cell.
 @compute @workgroup_size(16, 16)
 fn spawn_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    if all(global_id.xy == vec2(0u)) {
+        atomicStore(&allocations_left, i32(atomicLoad(&unallocated_surfels)));
+    }
+    workgroupBarrier();
+
+    let cache_xy = global_id.xy;
     var rng = globals.frame_count * 256 + global_id.x * 16 + global_id.y;
 
-    let try_allocate_n = surfel_allocation_context.cells[global_id.x][global_id.y];
+    let count = surfel_cache[cache_xy.x][cache_xy.y].count;
+    let try_allocate_n = SPAWN_IF_LESS - i32(count);
 
-    for (var i = 0u; i < try_allocate_n; i++) {
-        let nth_allocation = atomicAdd(&surfel_allocation_context.allocated_so_far, 1u);
-        if nth_allocation >= surfel_allocation_context.max_allocations {
-            // Ran out of stack.
-            return;
-        }
-
+    for (var i = 0; i < try_allocate_n; i++) {
         let cell_uv = rand_vec2f(&rng);
-        let pixel_uv = (vec2<f32>(global_id.xy) + cell_uv) / 16.0;
+        let pixel_uv = (vec2<f32>(cache_xy.xy) + cell_uv) / 16.0;
         let pixel_pos = vec2<u32>(pixel_uv * view.viewport.zw);
         let depth = textureLoad(depth_buffer, pixel_pos, 0i);
-        if(depth == 0.0) { return; } // Miss
+        if(depth == 0.0) { continue; } // Miss
+
+        let nth_allocation = atomicSub(&allocations_left, 1);
+        if nth_allocation <= 0 {
+            // Ran out of IDs.
+            return;
+        }
 
         let world_xyz = uv_depth_to_world(depth, pixel_uv);
         let id = allocate_surfel();
@@ -208,26 +226,23 @@ fn spawn_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 #endif // ATOMIC_BITMAP
 
-// Add newly allocated surfels to cache.
+/// Store surfel occupancy in a 5x5 kernel.
 @compute @workgroup_size(16, 16)
-fn extend_surfel_cache(@builtin(global_invocation_id) global_id: vec3<u32>) {
+fn cache_surfels_5x5(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let cache_xy = global_id.xy;
-    var count = surfel_cache[cache_xy.x][cache_xy.y].count;
-
-    // Gather surfels in 5x5 cell area.
     let cache_xy_f32 = vec2<f32>(cache_xy);
     let cell_min = (cache_xy_f32 - 10.0) / 8.0;
     let cell_max = (cache_xy_f32 - 5.0) / 8.0;
 
-    let unallocated_surfels_now = atomicLoad(&unallocated_surfels);
+    var count = 0u;
+    for (var id = 0u; id < MAX_SURFELS; id++) {
+        let is_active = (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) != 0;
 
-    for (var idx = unallocated_surfels_now; idx < surfel_allocation_context.max_allocations; idx++) {
-        let id = unallocated_surfel_ids_stack[idx];
         let surfel_surface = surfels_surface[id];
         let ndc = world_to_ndc(surfel_surface.position);
-        let is_within_cell = cell_min.x <= ndc.x && ndc.x <= cell_max.x && cell_min.y <= ndc.y && ndc.y <= cell_max.y;
+        let is_within_cell = cell_min.x < ndc.x && ndc.x <= cell_max.x && cell_min.y < ndc.y && ndc.y <= cell_max.y;
 
-        let is_correct = is_within_cell;
+        let is_correct = is_active && is_within_cell;
 
         let prev_id = surfel_cache[cache_xy.x][cache_xy.y].ids[count];
         surfel_cache[cache_xy.x][cache_xy.y].ids[count] = select(prev_id, id, is_correct);
@@ -257,32 +272,27 @@ fn update_reservoir(reservoir: ptr<function, Reservoir>, light_id: u32, light_rn
     }
 }
 
+fn sample_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
+    let surfel_surface = surfels_surface[surfel_id];
+    let surfel_irradiance = surfels_irradiance[surfel_id];
+    let light_distance = distance(ray_origin, surfel_surface.position);
+    let ray_direction = (surfel_surface.position - ray_origin) / light_distance;
+
+    let diffusion = saturate(dot(ray_direction, origin_world_normal));
+    let attenuation = 1 + light_distance * light_distance;
+    let is_toward_origin = f32(dot(ray_direction, surfel_surface.normal) < 0.0);
+    var irradiance = surfel_irradiance.mean * surfel_surface.color * diffusion / attenuation * is_toward_origin;
+
+    return LightSample(irradiance, SURFEL_PDF);
+}
+
 fn sample_surfel_or_light_source(id: u32, light_count: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
     var sample: LightSample;
 
     if id < MAX_SURFELS {
-        let surfel_id = id;
-        let surfel_surface = surfels_surface[surfel_id];
-        let surfel_irradiance = surfels_irradiance[surfel_id];
-        let light_distance = distance(ray_origin, surfel_surface.position);
-        let ray_direction = (surfel_surface.position - ray_origin) / light_distance;
-
-        // Surfel is pointing towards this origin
-        let light_visible = f32(dot(ray_direction, surfel_surface.normal) < 0.0);
-
-        // Attenuation
-        let light_distance_squared = light_distance * light_distance;
-
-        // Diffuse
-        let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
-
-        var irradiance = surfel_surface.color * surfel_irradiance.mean * (cos_theta_origin / light_distance_squared);
-        irradiance = select(irradiance, vec3(0.0), light_distance_squared == 0.0);
-
-        sample = LightSample(irradiance * light_visible, SURFEL_PDF);
+        sample = sample_surfel(id, ray_origin, origin_world_normal);
     } else {
-        let light_id = id - MAX_SURFELS;
-        let light = light_sources[light_id];
+        let light = light_sources[id - MAX_SURFELS];
         if light.kind == LIGHT_SOURCE_DIRECTIONAL {
             sample = sample_directional_light(light.id, ray_origin, origin_world_normal, state);
         } else {
@@ -294,33 +304,27 @@ fn sample_surfel_or_light_source(id: u32, light_count: u32, ray_origin: vec3<f32
     return sample;
 }
 
+fn trace_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> vec3<f32> {
+    let surfel_surface = surfels_surface[surfel_id];
+    let surfel_irradiance = surfels_irradiance[surfel_id];
+    let light_distance = distance(ray_origin, surfel_surface.position);
+    let ray_direction = (surfel_surface.position - ray_origin) / light_distance;
+    let ray_hit = first_hit_ray_trace(ray_origin, ray_direction);
+
+    let diffusion = saturate(dot(ray_direction, origin_world_normal));
+    let attenuation = 1 + light_distance * light_distance;
+    let is_toward_origin = f32(dot(ray_direction, surfel_surface.normal) < 0.0);
+    let is_visible = f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
+    var irradiance = surfel_irradiance.mean * surfel_surface.color * diffusion / attenuation * is_toward_origin * is_visible;
+
+    return irradiance;
+}
+
 fn trace_surfel_or_light_source(id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
-    // Surfels are virtual lights.
     if id < MAX_SURFELS {
-        let surfel_id = id;
-        let surfel_surface = surfels_surface[surfel_id];
-        let surfel_irradiance = surfels_irradiance[surfel_id];
-        let light_distance = distance(ray_origin, surfel_surface.position);
-        let ray_direction = (surfel_surface.position - ray_origin) / light_distance;
-        let ray_hit = first_hit_ray_trace(ray_origin, ray_direction);
-
-        // No obstructions and surfel is pointing towards this origin
-        let light_visible = f32((ray_hit.kind == RAY_QUERY_INTERSECTION_NONE) && (dot(ray_direction, surfel_surface.normal) < 0.0));
-
-        // Attenuation
-        let light_distance_squared = light_distance * light_distance;
-
-        // Diffuse
-        let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
-
-        var irradiance = surfel_surface.color * surfel_irradiance.mean * (cos_theta_origin / light_distance_squared);
-        irradiance = select(irradiance, vec3(0.0), light_distance_squared == 0.0);
-
-        // In case a surfel samples itself.
-        return irradiance * light_visible;
+        return trace_surfel(id, ray_origin, origin_world_normal);;
     } else {
-        let light_id = id - MAX_SURFELS;
-        let light = light_sources[light_id];
+        let light = light_sources[id - MAX_SURFELS];
         if light.kind == LIGHT_SOURCE_DIRECTIONAL {
             return trace_directional_light(light.id, ray_origin, origin_world_normal, state);
         } else {
@@ -412,34 +416,6 @@ fn apply_surfel_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 #endif // ATOMIC_USAGE
 
-#ifdef ATOMIC_BITMAP
-/// Deallocates one specific surfel.
-///
-/// SAFETY: Only call if the ID is allocated.
-fn deallocate_surfel(id: u32) {
-    let idx = atomicAdd(&unallocated_surfels, 1u);
-    unallocated_surfel_ids_stack[idx] = id;
-
-    let bin = id / 32u;
-    let bit = id % 32u;
-    atomicAnd(&allocated_surfels_bitmap[bin], ~(1u << bit));
-}
-
-// Attempts to despawn all surfels outside of view frustum.
-@compute @workgroup_size(1)
-fn despawn_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
-    var id = global_id.x;
-    if (atomicLoad(&allocated_surfels_bitmap[id / 32u]) & (1u << (id % 32u))) == 0u {
-        // Not active.
-        return;
-    }
-    if surfel_usage[id] == 0u {
-        deallocate_surfel(id);
-    }
-    surfel_usage[id] = 0u;
-}
-#endif // ATOMIC_BITMAP
-
 @compute @workgroup_size(8, 8)
 fn debug_surfels_view(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if any(global_id.xy >= vec2<u32>(view.viewport.zw)) { return; } // Outside of view
@@ -449,8 +425,6 @@ fn debug_surfels_view(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let pixel_uv = (vec2<f32>(global_id.xy) + 0.5) / view.viewport.zw;
     let pixel_pos = uv_depth_to_world(depth, pixel_uv);
-    let ndc = uv_to_ndc(pixel_uv);
-    let cache_xy = ndc_to_cache(ndc);
 
     let view_distance = distance(view.world_position, pixel_pos);
     let radius = view_distance * DEBUG_SURFEL_SIZE;
@@ -470,24 +444,23 @@ fn debug_surfels_view(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 fn world_to_ndc(pos: vec3<f32>) -> vec3<f32> {
     let ndc_raw = view.view_proj * vec4(pos, 1.0);
-    return ndc_raw.xyz / ndc_raw.w;
+    return vec3(ndc_raw.x, -ndc_raw.y, ndc_raw.z) / ndc_raw.w;
 }
 
-fn ndc_to_world(ndc: vec3<f32>) -> vec3<f32> {
-    let pos_raw = view.inverse_view_proj * vec4(ndc, 1.0);
+fn ndc_to_world(ndc: vec2<f32>, depth: f32) -> vec3<f32> {
+    let pos_raw = view.inverse_view_proj * vec4(ndc.x, -ndc.y, depth, 1.0);
     return pos_raw.xyz / pos_raw.w;
 }
 
 fn uv_to_ndc(uv: vec2<f32>) -> vec2<f32> {
-    // TODO: why is Y negated???
-    return (uv - 0.5) * vec2(2.0, -2.0);
-}
-
-fn ndc_to_cache(ndc: vec2<f32>) -> vec2<u32> {
-    return min(vec2<u32>((ndc + 1.0) * 8.0), vec2(15u, 15u));
+    return uv * 2.0 - 1.0;
 }
 
 fn uv_depth_to_world(depth: f32, uv: vec2<f32>) -> vec3<f32> {
     let ndc = uv_to_ndc(uv);
-    return ndc_to_world(vec3(ndc, depth));
+    return ndc_to_world(ndc.xy, depth);
+}
+
+fn ndc_to_cache(ndc: vec2<f32>) -> vec2<u32> {
+    return min(vec2<u32>((ndc + 1.0) * 8.0), vec2(15u, 15u));
 }
