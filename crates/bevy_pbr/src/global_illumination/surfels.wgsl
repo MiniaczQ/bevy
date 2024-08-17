@@ -60,7 +60,7 @@ const SURFEL_PDF: f32 = 10.0;
 const SURFEL_AVG_PROBES: u32 = 128u;
 
 // Range at which surfels light surrounding pixels.
-const AFFECTION_RANGE: f32 = 0.075;
+const AFFECTION_RANGE: f32 = 0.01; //0.075;
 // Size of surfels in the debug view.
 const DEBUG_SURFEL_SIZE: f32 = 0.0075;
 

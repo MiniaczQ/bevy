@@ -159,10 +159,10 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
         pass.pop_debug_group();
 
-        pass.push_debug_group("debug_surfels_view");
-        pass.set_pipeline(debug_surfels_view);
-        pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
-        pass.pop_debug_group();
+        //pass.push_debug_group("debug_surfels_view");
+        //pass.set_pipeline(debug_surfels_view);
+        //pass.dispatch_workgroups((viewport.x + 7) / 8, (viewport.y + 7) / 8, 1);
+        //pass.pop_debug_group();
 
         Ok(())
     }
