@@ -63,6 +63,7 @@ fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
         let light_rng = rng;
         let sample = sample_light_sources(light_id, light_count, world_position, world_normal, &rng);
+        // pdf = pdf / light_count
         let target_pdf = tonemapping_luminance(sample.irradiance * brdf);
         let light_weight = target_pdf / sample.pdf;
 
@@ -70,12 +71,14 @@ fn sample_direct_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     rng = reservoir.light_rng;
+    // visibility pass
     var irradiance = trace_light_source(reservoir.light_id, world_position, world_normal, &rng);
 
     let target_pdf = tonemapping_luminance(irradiance * brdf);
     let w = reservoir.weight_sum / (target_pdf * f32(reservoir.sample_count));
     reservoir.light_weight = select(0.0, w, target_pdf > 0.0);
 
+    // lighting
     irradiance *= reservoir.light_weight;
     irradiance *= view.exposure;
 

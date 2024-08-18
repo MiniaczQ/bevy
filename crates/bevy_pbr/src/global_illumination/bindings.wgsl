@@ -185,7 +185,9 @@ fn generate_tbn(normal: vec3<f32>) -> mat3x3<f32> {
 }
 
 struct LightSample {
+    // p^(x)
     irradiance: vec3<f32>,
+    // 
     pdf: f32,
 }
 

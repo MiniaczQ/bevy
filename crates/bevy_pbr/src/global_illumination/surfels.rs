@@ -30,7 +30,10 @@ pub struct GlobalIlluminationNode {
     despawn_surfels_low_usage: CachedComputePipelineId,
     spawn_surfels: CachedComputePipelineId,
     cache_surfels_5x5: CachedComputePipelineId,
-    update_surfels: CachedComputePipelineId,
+    surfels_sample_lights: CachedComputePipelineId,
+    surfels_sample_neighbours: CachedComputePipelineId,
+    surfels_sample_history: CachedComputePipelineId,
+    surfels_apply_samples: CachedComputePipelineId,
     apply_surfel_diffuse: CachedComputePipelineId,
     debug_surfels_view: CachedComputePipelineId,
 }
@@ -63,7 +66,10 @@ impl ViewNode for GlobalIlluminationNode {
             Some(despawn_surfels_low_usage),
             Some(spawn_surfels),
             Some(cache_surfels_5x5),
-            Some(update_surfels),
+            Some(surfels_sample_lights),
+            Some(surfels_sample_neighbours),
+            Some(surfels_sample_history),
+            Some(surfels_apply_samples),
             Some(apply_surfel_diffuse),
             Some(debug_surfels_view),
             Some(asset_bind_group),
@@ -79,7 +85,10 @@ impl ViewNode for GlobalIlluminationNode {
             pipeline_cache.get_compute_pipeline(self.despawn_surfels_low_usage),
             pipeline_cache.get_compute_pipeline(self.spawn_surfels),
             pipeline_cache.get_compute_pipeline(self.cache_surfels_5x5),
-            pipeline_cache.get_compute_pipeline(self.update_surfels),
+            pipeline_cache.get_compute_pipeline(self.surfels_sample_lights),
+            pipeline_cache.get_compute_pipeline(self.surfels_sample_neighbours),
+            pipeline_cache.get_compute_pipeline(self.surfels_sample_history),
+            pipeline_cache.get_compute_pipeline(self.surfels_apply_samples),
             pipeline_cache.get_compute_pipeline(self.apply_surfel_diffuse),
             pipeline_cache.get_compute_pipeline(self.debug_surfels_view),
             &asset_bindings.bind_group,
@@ -149,8 +158,23 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups(1, 1, 1);
         pass.pop_debug_group();
 
-        pass.push_debug_group("surfels_update");
-        pass.set_pipeline(update_surfels);
+        pass.push_debug_group("surfels_sample_lights");
+        pass.set_pipeline(surfels_sample_lights);
+        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        pass.pop_debug_group();
+
+        pass.push_debug_group("surfels_sample_neighbours");
+        pass.set_pipeline(surfels_sample_neighbours);
+        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        pass.pop_debug_group();
+
+        pass.push_debug_group("surfels_sample_history");
+        pass.set_pipeline(surfels_sample_history);
+        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        pass.pop_debug_group();
+
+        pass.push_debug_group("surfels_apply_samples");
+        pass.set_pipeline(surfels_apply_samples);
         pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
         pass.pop_debug_group();
 
@@ -199,7 +223,7 @@ impl FromWorld for GlobalIlluminationNode {
                     ), // surface
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(32 * MAX_SURFELS) }),
+                        Some(unsafe { NonZeroU64::new_unchecked(48 * MAX_SURFELS) }),
                     ), // irradiance
                     storage_buffer_sized(
                         false,
@@ -282,18 +306,61 @@ impl FromWorld for GlobalIlluminationNode {
             entry_point: "cache_surfels_5x5".into(),
         });
 
-        let update_surfels = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
-            label: Some("update_surfels_pipeline".into()),
-            layout: vec![
-                asset_bindings.bind_group_layout.clone(),
-                scene_bindings.bind_group_layout.clone(),
-                bind_group_layout.clone(),
-            ],
-            push_constant_ranges: vec![],
-            shader: SURFELS_SHADER_HANDLE,
-            shader_defs: vec![],
-            entry_point: "update_surfels".into(),
-        });
+        let surfels_sample_lights =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: Some("surfels_sample_lights_pipeline".into()),
+                layout: vec![
+                    asset_bindings.bind_group_layout.clone(),
+                    scene_bindings.bind_group_layout.clone(),
+                    bind_group_layout.clone(),
+                ],
+                push_constant_ranges: vec![],
+                shader: SURFELS_SHADER_HANDLE,
+                shader_defs: vec![],
+                entry_point: "surfels_sample_lights".into(),
+            });
+
+        let surfels_sample_neighbours =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: Some("surfels_sample_neighbours_pipeline".into()),
+                layout: vec![
+                    asset_bindings.bind_group_layout.clone(),
+                    scene_bindings.bind_group_layout.clone(),
+                    bind_group_layout.clone(),
+                ],
+                push_constant_ranges: vec![],
+                shader: SURFELS_SHADER_HANDLE,
+                shader_defs: vec![],
+                entry_point: "surfels_sample_neighbours".into(),
+            });
+
+        let surfels_sample_history =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: Some("surfels_sample_history_pipeline".into()),
+                layout: vec![
+                    asset_bindings.bind_group_layout.clone(),
+                    scene_bindings.bind_group_layout.clone(),
+                    bind_group_layout.clone(),
+                ],
+                push_constant_ranges: vec![],
+                shader: SURFELS_SHADER_HANDLE,
+                shader_defs: vec![],
+                entry_point: "surfels_sample_history".into(),
+            });
+
+        let surfels_apply_samples =
+            pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
+                label: Some("surfels_apply_samples_pipeline".into()),
+                layout: vec![
+                    asset_bindings.bind_group_layout.clone(),
+                    scene_bindings.bind_group_layout.clone(),
+                    bind_group_layout.clone(),
+                ],
+                push_constant_ranges: vec![],
+                shader: SURFELS_SHADER_HANDLE,
+                shader_defs: vec![],
+                entry_point: "surfels_apply_samples".into(),
+            });
 
         let apply_surfel_diffuse =
             pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
@@ -329,7 +396,10 @@ impl FromWorld for GlobalIlluminationNode {
             despawn_surfels_low_usage,
             spawn_surfels,
             cache_surfels_5x5,
-            update_surfels,
+            surfels_sample_lights,
+            surfels_sample_neighbours,
+            surfels_sample_history,
+            surfels_apply_samples,
             apply_surfel_diffuse,
             debug_surfels_view,
         }
@@ -374,7 +444,7 @@ pub fn prepare_view_resources(
         };
         let surfels_irradiance = BufferDescriptor {
             label: Some("surfels_irradiance"),
-            size: 32 * MAX_SURFELS,
+            size: 48 * MAX_SURFELS,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };
