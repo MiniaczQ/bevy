@@ -256,13 +256,13 @@ fn cache_surfels_5x5(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 fn update_one_surfel(surfel: ptr<function, SurfelIrradiance>, irradiance: vec3<f32>) {
     // Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
-    (*surfel).mean = irradiance;
+    //(*surfel).mean = irradiance;
 
-    //(*surfel).probes = min((*surfel).probes + 1u, SURFEL_AVG_PROBES);
-    //let delta = irradiance - (*surfel).mean;
-    //(*surfel).mean += delta / f32((*surfel).probes);
-    //let delta2 = irradiance - (*surfel).mean;
-    //(*surfel).mean_squared += delta * delta2;
+    (*surfel).probes = min((*surfel).probes + 1u, SURFEL_AVG_PROBES);
+    let delta = irradiance - (*surfel).mean;
+    (*surfel).mean += delta / f32((*surfel).probes);
+    let delta2 = irradiance - (*surfel).mean;
+    (*surfel).mean_squared += delta * delta2;
 }
 
 struct Reservoir {
@@ -414,7 +414,9 @@ fn surfels_apply_samples(@builtin(global_invocation_id) global_id: vec3<u32>) {
     irradiance *= sample.light_weight;
     irradiance *= view.exposure;
     irradiance *= f32(arrayLength(&light_sources));
-    irradiance *= 10.0;
+
+    // Arbitrary correction factor, because we all love magic numbers :)
+    irradiance *= 40.0;
 
     update_one_surfel(&surfel_irradiance, irradiance);
     surfels_irradiance[id] = surfel_irradiance;
