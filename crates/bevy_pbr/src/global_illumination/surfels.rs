@@ -163,10 +163,20 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
         pass.pop_debug_group();
 
-        pass.push_debug_group("surfels_sample_neighbours");
-        pass.set_pipeline(surfels_sample_neighbours);
-        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
-        pass.pop_debug_group();
+        //pass.push_debug_group("surfels_sample_neighbours_1");
+        //pass.set_pipeline(surfels_sample_neighbours);
+        //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        //pass.pop_debug_group();
+
+        //pass.push_debug_group("surfels_sample_neighbours_2");
+        //pass.set_pipeline(surfels_sample_neighbours);
+        //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        //pass.pop_debug_group();
+
+        //pass.push_debug_group("surfels_sample_neighbours_3");
+        //pass.set_pipeline(surfels_sample_neighbours);
+        //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        //pass.pop_debug_group();
 
         pass.push_debug_group("surfels_sample_history");
         pass.set_pipeline(surfels_sample_history);
@@ -223,7 +233,7 @@ impl FromWorld for GlobalIlluminationNode {
                     ), // surface
                     storage_buffer_sized(
                         false,
-                        Some(unsafe { NonZeroU64::new_unchecked(48 * MAX_SURFELS) }),
+                        Some(unsafe { NonZeroU64::new_unchecked(64 * MAX_SURFELS) }),
                     ), // irradiance
                     storage_buffer_sized(
                         false,
@@ -444,7 +454,7 @@ pub fn prepare_view_resources(
         };
         let surfels_irradiance = BufferDescriptor {
             label: Some("surfels_irradiance"),
-            size: 48 * MAX_SURFELS,
+            size: 64 * MAX_SURFELS,
             usage: BufferUsages::STORAGE,
             mapped_at_creation: false,
         };
