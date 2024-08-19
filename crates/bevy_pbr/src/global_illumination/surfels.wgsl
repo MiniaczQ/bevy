@@ -52,7 +52,10 @@ const MAX_SURFELS: u32 = 2048u;
 const SURFEL_MAP_BITS: u32 = 64u;
 
 // How many lights (and surfels) are sampled by each surfel each frame.
-const LIGHT_SAMPLES: u32 = 64u;
+const LIGHT_SAMPLES: u32 = 32u;
+const SURFEL_SAMPLES: u32 = 32u;
+const NEIGHBOUR_SAMPLES: u32 = 64u;
+
 // Chance of sampling a surfel instead of an actual light source.
 const SAMPLE_SURFEL_CHANCE: f32 = 0.0;
 // Probability distribution function sample of a surfel. Cannot use 0.0 because of singularity.
@@ -363,22 +366,22 @@ fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
     for (var i = 0u; i < LIGHT_SAMPLES; i++) {
         let light_id = MAX_SURFELS + rand_range_u(light_count, &rng);
         let light_rng = rng;
-        let sample = sample_surfel_or_light_source(light_id, &rng, surfel_surface.position, surfel_surface.normal);
+        var sample = sample_surfel_or_light_source(light_id, &rng, surfel_surface.position, surfel_surface.normal);
         let p_hat = tonemapping_luminance(sample.irradiance * brdf);
+        let W = f32(light_count) / sample.pdf;
         // p_hat(x) * (1 / pdf) * (1 / M)
         // p_hat(x) * W * m
-        let m = 1.0 / f32(LIGHT_SAMPLES);
-        let W = 1.0 / sample.pdf;
-        let light_weight = p_hat * W * m;
+        let light_weight = p_hat * W / f32(LIGHT_SAMPLES);
         update_reservoir(&reservoir, light_id, light_rng, light_weight, &rng);
     }
 
-    rng = reservoir.light_rng;
+    // TODO: surfel sampling
+
     // Built-in visibility pass
+    rng = reservoir.light_rng;
     let irradiance = trace_surfel_or_light_source(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal);
     let p_hat = tonemapping_luminance(irradiance * brdf);
-    // W = 1 / (p_hat(y) * w_sum)
-    //let light_weight = select(0.0, 1.0 / p_hat / reservoir.weight_sum, p_hat > 0.0);
+    // W = w_sum / p_hat(y) 
     let light_weight = select(0.0, reservoir.weight_sum / p_hat, p_hat > 0.0);
 
     var surfel_irradiance = surfels_irradiance[id];
@@ -389,13 +392,51 @@ fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
 /// Adds neighbour samples
 @compute @workgroup_size(32)
 fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    var id = global_id.x;
+    if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { return; } // Surfel not active
+    var rng = globals.frame_count * MAX_SURFELS + global_id.x;
 
+    let surfel_surface = surfels_surface[id];
+    let brdf = surfel_surface.color / PI;
+    var reservoir = Reservoir(0u, 0u, 0.0, 0.0, 0u);
+    let ndc = world_to_ndc(surfel_surface.position);
+    let cache_xy = ndc_to_cache(ndc.xy);
+    let count = surfel_cache[cache_xy.x][cache_xy.y].count;
+    for (var i = 0u; i < NEIGHBOUR_SAMPLES; i++) {
+        let idx = rand_range_u(count, &rng);
+        let sub_id = surfel_cache[cache_xy.x][cache_xy.y].ids[idx];
+        
+        let other_sample = surfels_irradiance[sub_id].sample;
+        rng = other_sample.light_rng;
+        var sample = sample_surfel_or_light_source(other_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
+        let W = other_sample.light_weight * f32(count);
+        let p_hat = tonemapping_luminance(sample.irradiance * brdf);
+        // p_hat(x) * W * m
+        let light_weight = p_hat * W / f32(NEIGHBOUR_SAMPLES);
+        update_reservoir(&reservoir, other_sample.light_id, other_sample.light_rng, light_weight, &rng);
+    }
+
+    rng = reservoir.light_rng;
+    let irradiance = sample_surfel_or_light_source(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
+    let p_hat = tonemapping_luminance(irradiance * brdf);
+    // W = w_sum / p_hat(y) 
+    let light_weight = select(0.0, reservoir.weight_sum / p_hat, p_hat > 0.0);
+
+    workgroupBarrier();
+    var surfel_irradiance = surfels_irradiance[id];
+    surfel_irradiance.sample = SurfelSample(light_weight, reservoir.light_id, reservoir.light_rng);
+    surfels_irradiance[id] = surfel_irradiance;
 }
 
 /// Adds previous samples
 @compute @workgroup_size(32)
 fn surfels_sample_history(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    var id = global_id.x;
+    if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { return; } // Surfel not active
+    var rng = globals.frame_count * MAX_SURFELS + global_id.x;
 
+    // TODO: temporal sampling
+    
 }
 
 /// Applies final sample to the surfel
@@ -413,10 +454,9 @@ fn surfels_apply_samples(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // f(x) * W
     irradiance *= sample.light_weight;
     irradiance *= view.exposure;
-    irradiance *= f32(arrayLength(&light_sources));
 
     // Arbitrary correction factor, because we all love magic numbers :)
-    irradiance *= 40.0;
+    //irradiance *= 40.0;
 
     update_one_surfel(&surfel_irradiance, irradiance);
     surfels_irradiance[id] = surfel_irradiance;
@@ -486,9 +526,9 @@ fn debug_surfels_view(@builtin(global_invocation_id) global_id: vec3<u32>) {
     textureStore(diffuse_output, global_id.xy, vec4<f32>(0.0, 0.0, 0.0, 0.0));
 }
 
-fn world_to_ndc(pos: vec3<f32>) -> vec3<f32> {
+fn world_to_ndc(pos: vec3<f32>) -> vec2<f32> {
     let ndc_raw = view.view_proj * vec4(pos, 1.0);
-    return vec3(ndc_raw.x, -ndc_raw.y, ndc_raw.z) / ndc_raw.w;
+    return vec2(ndc_raw.x, -ndc_raw.y) / ndc_raw.w;
 }
 
 fn ndc_to_world(ndc: vec2<f32>, depth: f32) -> vec3<f32> {
