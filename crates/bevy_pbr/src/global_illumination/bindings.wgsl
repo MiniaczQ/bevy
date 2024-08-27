@@ -80,8 +80,9 @@ fn trace_ray(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_t_min: f32, ra
     return rayQueryGetCommittedIntersection(&rq);
 }
 
-fn first_hit_ray_trace(ray_origin: vec3<f32>, ray_direction: vec3<f32>) -> RayIntersection {
-    let ray = RayDesc(RAY_FLAG_TERMINATE_ON_FIRST_HIT, RAY_NO_CULL, RAY_T_MIN, RAY_T_MAX, ray_origin, ray_direction);
+fn first_hit_ray_trace(ray_origin: vec3<f32>, ray_direction: vec3<f32>, ray_length: f32) -> RayIntersection {
+    let ray_t_max = ray_length - RAY_T_MIN;
+    let ray = RayDesc(RAY_FLAG_TERMINATE_ON_FIRST_HIT, RAY_NO_CULL, RAY_T_MIN, ray_t_max, ray_origin, ray_direction);
     var rq: ray_query;
     rayQueryInitialize(&rq, tlas, ray);
     rayQueryProceed(&rq);
@@ -209,10 +210,6 @@ fn sample_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal:
     let phi = r.y * 2.0 * PI;
     var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
     ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
-
-    // No attenuation
-
-    // Diffuse
     let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
 
     let irradiance = light.color.rgb * cos_theta * cos_theta_origin;
@@ -231,6 +228,7 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal: 
     let phi = r.y * 2.0 * PI;
     var ray_direction = vec3(vec2(cos(phi), sin(phi)) * sin_theta, cos_theta);
     ray_direction = generate_tbn(light.direction_to_light) * ray_direction;
+    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
 
     let ray = RayDesc(RAY_FLAG_TERMINATE_ON_FIRST_HIT, RAY_NO_CULL, RAY_T_MIN, RAY_T_MAX, ray_origin, ray_direction);
     var rq: ray_query;
@@ -238,11 +236,6 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal: 
     rayQueryProceed(&rq);
     let ray_hit = rayQueryGetCommittedIntersection(&rq);
     let light_visible = f32(ray_hit.kind == RAY_QUERY_INTERSECTION_NONE);
-
-    // No attenuation
-
-    // Diffuse
-    let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
 
     let irradiance = light.color.rgb * cos_theta * cos_theta_origin;
 
@@ -252,8 +245,6 @@ fn trace_directional_light(id: u32, ray_origin: vec3<f32>, origin_world_normal: 
 fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> LightSample {
     // https://www.realtimerendering.com/raytracinggems/unofficial_RayTracingGems_v1.9.pdf#0004286901.INDD%3ASec22%3A297
     var barycentrics = rand_vec2f(state);
-    // TODO: faster?
-    //barycentrics = select(barycentrics, 1.0 - barycentrics, barycentrics.x + barycentrics.y > 1.0);
     if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
     let light_hit = resolve_ray_hit_inner(object_id, triangle_id, barycentrics);
 
@@ -262,13 +253,11 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
     let light_distance = distance(ray_origin, light_hit.world_position);
     let ray_direction = (light_hit.world_position - ray_origin) / light_distance;
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
-
-    // Attenuation
     let light_distance_squared = light_distance * light_distance;
-
-    // Diffuse
     let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
 
+    // gfxcourses.stanford.edu/cs348b/spring22content/media/directillum/directlighting1.pdf#page=23
+    // L_e * cos(theta_i) * cos(theta) / r^2
     let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
 
     return LightSample(irradiance, pdf);
@@ -276,19 +265,13 @@ fn sample_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f
 
 fn trace_emissive_triangle(object_id: u32, triangle_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>, state: ptr<function, u32>) -> vec3<f32> {
     var barycentrics = rand_vec2f(state);
-    // TODO: faster?
-    //barycentrics = select(barycentrics, 1.0 - barycentrics, barycentrics.x + barycentrics.y > 1.0);
     if barycentrics.x + barycentrics.y > 1.0 { barycentrics = 1.0 - barycentrics; }
     let light_hit = resolve_ray_hit_inner(object_id, triangle_id, barycentrics);
 
     let light_distance = distance(ray_origin, light_hit.world_position);
     let ray_direction = (light_hit.world_position - ray_origin) / light_distance;
     let cos_theta_light = saturate(dot(-ray_direction, light_hit.world_normal));
-
-    // Attenuation
     let light_distance_squared = light_distance * light_distance;
-
-    // Diffuse
     let cos_theta_origin = saturate(dot(ray_direction, origin_world_normal));
 
     let irradiance = light_hit.material.emissive.rgb * cos_theta_origin * (cos_theta_light / light_distance_squared);
