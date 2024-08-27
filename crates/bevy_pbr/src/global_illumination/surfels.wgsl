@@ -58,9 +58,6 @@ const LIGHT_SAMPLES: u32 = 32u;
 const SURFEL_SAMPLES: u32 = 8u;
 const NEIGHBOUR_SAMPLES: u32 = 16u;
 
-// PDF of a surfel exactly one unit from view.
-const SURFEL_PDF: f32 = 2048.0;
-
 // How many samples get averaged by each surfel over time. Higher values mean slower changes, but less flickering.
 const SURFEL_MAX_MEAN_SAMPLES: u32 = 128u;
 
@@ -285,7 +282,7 @@ struct Reservoir {
     // Required for WRS (Weighted Reservoid Sampling)
     weight_sum: f32,
 
-    // Required for RIS (Resampled Importance Sampling) / MIS (Multiple Importance Sampling)
+    // Not actually used, can alter MIS weights to give more importance to certain samples.
     sample_count: u32
 }
 
@@ -298,7 +295,7 @@ fn update_reservoir(reservoir: ptr<function, Reservoir>, light_id: u32, light_rn
     }
 }
 
-fn sample_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
+fn sample_surfel_no_rt(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
     let surfel_surface = surfels_surface[surfel_id];
     let surfel_irradiance = surfels_irradiance[surfel_id];
     let light_distance = distance(ray_origin, surfel_surface.position);
@@ -310,19 +307,15 @@ fn sample_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec
     var irradiance = surfel_irradiance.mean * surfel_surface.color / PI * cos_theta_origin * cos_theta_light / light_distance_squared;
     irradiance = select(vec3(0.0), irradiance, light_distance > 0.0);
 
-    // Surfels are constant size in relation to the camera
-    let view_distance = distance(view.world_position, surfel_surface.position);
-    let view_distance_squared = view_distance * view_distance;
-    let pdf = SURFEL_PDF / view_distance_squared;
-
-    return LightSample(irradiance, pdf);
+    // Surfels are points, so we ignore the PDF of sampling a specific point. (this is why we don't require RNG)
+    return LightSample(irradiance, 1.0);
 }
 
-fn sample_surfel_or_light_source(id: u32, state: ptr<function, u32>, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
+fn sample_light_no_rt(id: u32, state: ptr<function, u32>, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
     var sample: LightSample;
 
     if id < MAX_SURFELS {
-        sample = sample_surfel(id, ray_origin, origin_world_normal);
+        sample = sample_surfel_no_rt(id, ray_origin, origin_world_normal);
     } else {
         let light = light_sources[id - MAX_SURFELS];
         if light.kind == LIGHT_SOURCE_DIRECTIONAL {
@@ -335,7 +328,7 @@ fn sample_surfel_or_light_source(id: u32, state: ptr<function, u32>, ray_origin:
     return sample;
 }
 
-fn trace_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> vec3<f32> {
+fn sample_surfel_rt(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
     let surfel_surface = surfels_surface[surfel_id];
     let surfel_irradiance = surfels_irradiance[surfel_id];
     let light_distance = distance(ray_origin, surfel_surface.position);
@@ -349,20 +342,24 @@ fn trace_surfel(surfel_id: u32, ray_origin: vec3<f32>, origin_world_normal: vec3
     var irradiance = surfel_irradiance.mean * surfel_surface.color / PI * cos_theta_light * cos_theta_origin / light_distance_squared;
     irradiance = select(vec3(0.0), irradiance, light_distance > 0.0);
 
-    return irradiance * is_visible;
+    return LightSample(irradiance * is_visible, 1.0);
 }
 
-fn trace_surfel_or_light_source(id: u32, state: ptr<function, u32>, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> vec3<f32> {
+fn sample_light_rt(id: u32, state: ptr<function, u32>, ray_origin: vec3<f32>, origin_world_normal: vec3<f32>) -> LightSample {
+    var sample: LightSample;
+
     if id < MAX_SURFELS {
-        return trace_surfel(id, ray_origin, origin_world_normal);;
+        sample = sample_surfel_rt(id, ray_origin, origin_world_normal);;
     } else {
         let light = light_sources[id - MAX_SURFELS];
         if light.kind == LIGHT_SOURCE_DIRECTIONAL {
-            return trace_directional_light(light.id, ray_origin, origin_world_normal, state);
+            sample = trace_directional_light(light.id, ray_origin, origin_world_normal, state);
         } else {
-            return trace_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
+            sample = trace_emissive_triangle(light.id, light.kind, ray_origin, origin_world_normal, state);
         }
     }
+
+    return sample;
 }
 
 /// Adds light samples
@@ -385,7 +382,7 @@ fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
     for (var i = 0u; i < LIGHT_SAMPLES; i++) {
         let light_id = MAX_SURFELS + rand_range_u(light_count, &rng);
         let light_rng = rng;
-        var sample = sample_surfel_or_light_source(light_id, &rng, surfel_surface.position, surfel_surface.normal);
+        var sample = sample_light_no_rt(light_id, &rng, surfel_surface.position, surfel_surface.normal);
         let p_hat = tonemapping_luminance(sample.irradiance * brdf);
         // W = 1 / PDF
         let old_W = f32(light_count) / sample.pdf; // `sample.pdf` is the probability to sample a point, we need to account for probability of sampling the light itself
@@ -396,7 +393,7 @@ fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     // Built-in visibility pass
     rng = reservoir.light_rng;
-    let irradiance = trace_surfel_or_light_source(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal);
+    let irradiance = sample_light_rt(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
     let p_hat = tonemapping_luminance(irradiance * brdf);
     // W = w_sum / p_hat(y) 
     let W = select(0.0, reservoir.weight_sum / p_hat, p_hat > 0.0);
@@ -426,7 +423,7 @@ fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>
         
         let other_sample = surfels_irradiance[sub_id].sample;
         rng = other_sample.light_rng;
-        var sample = sample_surfel_or_light_source(other_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
+        var sample = sample_light_no_rt(other_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
         let p_hat = tonemapping_luminance(sample.irradiance * brdf);
         let old_W = other_sample.light_weight * f32(count);
         // p_hat(x) * W * m
@@ -443,7 +440,7 @@ fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>
     //    
     //    let other_sample = surfels_irradiance[sub_id].sample;
     //    rng = other_sample.light_rng;
-    //    var sample = sample_surfel_or_light_source(other_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
+    //    var sample = sample_light_no_rt(other_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
     //    let p_hat = tonemapping_luminance(sample.irradiance * brdf);
     //    mis_denominator += p_hat;
     //    sub_ids[i] = sub_id;
@@ -462,7 +459,7 @@ fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>
     //}
 
     rng = reservoir.light_rng;
-    let irradiance = sample_surfel_or_light_source(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
+    let irradiance = sample_light_no_rt(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
     let p_hat = tonemapping_luminance(irradiance * brdf);
     // W = w_sum / p_hat(y)
     let W = select(0.0, reservoir.weight_sum / p_hat, p_hat > 0.0);
@@ -486,10 +483,10 @@ fn surfels_sample_history(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var surfel_irradiance = surfels_irradiance[id];
     
     rng = surfel_irradiance.sample.light_rng;
-    var current_sample = sample_surfel_or_light_source(surfel_irradiance.sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
+    var current_sample = sample_light_no_rt(surfel_irradiance.sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
     let current_p_hat = tonemapping_luminance(current_sample.irradiance * brdf);
     rng = surfel_irradiance.previous_sample.light_rng;
-    var previous_sample = sample_surfel_or_light_source(surfel_irradiance.previous_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
+    var previous_sample = sample_light_no_rt(surfel_irradiance.previous_sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
     let previous_p_hat = tonemapping_luminance(previous_sample.irradiance * brdf);
 
     let mis_denominator = current_p_hat + previous_p_hat;
@@ -510,7 +507,7 @@ fn surfels_sample_history(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     rng = reservoir.light_rng;
-    let irradiance = sample_surfel_or_light_source(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
+    let irradiance = sample_light_no_rt(reservoir.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
     let p_hat = tonemapping_luminance(irradiance * brdf);
     // W = w_sum / p_hat(y)
     let W = select(0.0, reservoir.weight_sum / p_hat, p_hat > 0.0);
@@ -530,7 +527,7 @@ fn surfels_apply_samples(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     let sample = surfel_irradiance.sample;
     var rng = sample.light_rng;
-    var irradiance = trace_surfel_or_light_source(sample.light_id, &rng, surfel_surface.position, surfel_surface.normal);
+    var irradiance = sample_light_rt(sample.light_id, &rng, surfel_surface.position, surfel_surface.normal).irradiance;
     // f(x) * W
     irradiance *= sample.light_weight;
 
