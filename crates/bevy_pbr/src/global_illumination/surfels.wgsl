@@ -23,10 +23,11 @@ struct SurfelIrradiance {
     // Selected sample for this surfel
     sample: SurfelSample,
     previous_sample: SurfelSample,
-    // Temporal average
+    // Running average over time with top limit SURFEL_MAX_MEAN_SAMPLES
     mean: vec3<f32>,
     probes: u32,
-    mean_squared: vec3<f32>,
+    // Distance from the camera
+    distance: f32,
 }
 
 struct SurfelCacheCell {
@@ -61,7 +62,7 @@ const NEIGHBOUR_SAMPLES: u32 = 16u;
 const SURFEL_PDF: f32 = 2048.0;
 
 // How many samples get averaged by each surfel over time. Higher values mean slower changes, but less flickering.
-const SURFEL_AVG_PROBES: u32 = 128u;
+const SURFEL_MAX_MEAN_SAMPLES: u32 = 128u;
 
 // Range at which surfels light surrounding pixels.
 const AFFECTION_RANGE: f32 = 0.075;
@@ -225,7 +226,7 @@ fn spawn_surfels(@builtin(global_invocation_id) global_id: vec3<u32>) {
         let world_normal = octahedral_decode(packed_normal);
         let base_color = pow(unpack4x8unorm(gpixel.r).rgb, vec3(2.2));
         surfels_surface[id] = SurfelSurface(world_xyz, world_normal, base_color);
-        surfels_irradiance[id] = SurfelIrradiance(SurfelSample(0.0, 0u, 0u), SurfelSample(0.0, 0u, 0u), vec3(0.0), 0u, vec3(0.0));
+        surfels_irradiance[id] = SurfelIrradiance(SurfelSample(0.0, 0u, 0u), SurfelSample(0.0, 0u, 0u), vec3(0.0), 0u, 0.0);
     }
 }
 #endif // ATOMIC_BITMAP
@@ -256,15 +257,21 @@ fn cache_surfels_5x5(@builtin(global_invocation_id) global_id: vec3<u32>) {
     surfel_cache[cache_xy.x][cache_xy.y].count = count;
 }
 
-fn update_one_surfel(surfel: ptr<function, SurfelIrradiance>, irradiance: vec3<f32>) {
-    // Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
-    //(*surfel).mean = irradiance;
+// TODO: Welford's online algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
+// For variance and selective sampling
+fn surfel_update_irradiance_average(surfel: ptr<function, SurfelIrradiance>, irradiance: vec3<f32>) {
+    let next_probes = (*surfel).probes + 1u;
+    (*surfel).probes = min(next_probes, SURFEL_MAX_MEAN_SAMPLES);
 
-    (*surfel).probes = min((*surfel).probes + 1u, SURFEL_AVG_PROBES);
-    let delta = irradiance - (*surfel).mean;
-    (*surfel).mean += delta / f32((*surfel).probes);
-    let delta2 = irradiance - (*surfel).mean;
-    (*surfel).mean_squared += delta * delta2;
+    // Contribution of the new sample
+    let positive_delta = (irradiance - (*surfel).mean) / f32((*surfel).probes);
+
+    // Counter-contribution of exceeding the sample count.
+    // If we exceed max samples, we decrease the average by 1 sample.
+    // We don't actually track all N samples, we remove 1/N of the average.
+    let negative_delta = select(vec3(0.0), (*surfel).mean / f32(SURFEL_MAX_MEAN_SAMPLES), next_probes > SURFEL_MAX_MEAN_SAMPLES);
+
+    (*surfel).mean += positive_delta - negative_delta;
 }
 
 struct Reservoir {
@@ -363,9 +370,15 @@ fn trace_surfel_or_light_source(id: u32, state: ptr<function, u32>, ray_origin: 
 fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var id = global_id.x;
     if (allocated_surfels_bitmap[id / 32u] & (1u << (id % 32u))) == 0u { return; } // Surfel not active
-    var rng = globals.frame_count * MAX_SURFELS + global_id.x;
 
+    // Update surfel's distance from camera (first surfel-driven operation in a frame)
     let surfel_surface = surfels_surface[id];
+    let distance = distance(surfel_surface.position, view.world_position);
+    surfels_irradiance[id].distance = distance;
+    workgroupBarrier();
+
+    // Sampling starts here
+    var rng = globals.frame_count * MAX_SURFELS + global_id.x;
     let brdf = surfel_surface.color / PI;
     var reservoir = Reservoir(0u, 0u, 0.0, 0.0, 0u);
     let light_count = arrayLength(&light_sources);
@@ -521,7 +534,7 @@ fn surfels_apply_samples(@builtin(global_invocation_id) global_id: vec3<u32>) {
     // f(x) * W
     irradiance *= sample.light_weight;
 
-    update_one_surfel(&surfel_irradiance, irradiance);
+    surfel_update_irradiance_average(&surfel_irradiance, irradiance);
     surfel_irradiance.previous_sample = surfel_irradiance.sample;
     surfels_irradiance[id] = surfel_irradiance;
 }
@@ -562,7 +575,7 @@ fn apply_surfel_diffuse(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     total_diffuse = select(vec3(0.0), total_diffuse / total_weight, total_weight > 0.0) * base_color;
     total_diffuse *= view.exposure;
-    total_diffuse *= 10.0;
+    total_diffuse *= 40.0;
 
     textureStore(diffuse_output, global_id.xy, vec4<f32>(total_diffuse, 1.0));
 }
