@@ -163,6 +163,11 @@ impl ViewNode for GlobalIlluminationNode {
         pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
         pass.pop_debug_group();
 
+        pass.push_debug_group("surfels_sample_history");
+        pass.set_pipeline(surfels_sample_history);
+        pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
+        pass.pop_debug_group();
+
         //pass.push_debug_group("surfels_sample_neighbours_1");
         //pass.set_pipeline(surfels_sample_neighbours);
         //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
@@ -170,11 +175,6 @@ impl ViewNode for GlobalIlluminationNode {
 
         //pass.push_debug_group("surfels_sample_neighbours_2");
         //pass.set_pipeline(surfels_sample_neighbours);
-        //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
-        //pass.pop_debug_group();
-
-        //pass.push_debug_group("surfels_sample_history");
-        //pass.set_pipeline(surfels_sample_history);
         //pass.dispatch_workgroups(MAX_SURFELS as u32 / 32, 1, 1);
         //pass.pop_debug_group();
 
