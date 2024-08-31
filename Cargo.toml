@@ -710,6 +710,16 @@ category = "3D Rendering"
 wasm = false
 
 [[example]]
+name = "surfels_test"
+path = "examples/3d/surfels_test.rs"
+
+[package.metadata.example.surfels_test]
+name = "Surfels Test"
+description = "Surfel testing example."
+category = "3D Rendering"
+wasm = false
+
+[[example]]
 name = "spotlight"
 path = "examples/3d/spotlight.rs"
 doc-scrape-examples = true
