@@ -710,12 +710,12 @@ category = "3D Rendering"
 wasm = false
 
 [[example]]
-name = "surfels_test"
-path = "examples/3d/surfels_test.rs"
+name = "surfels_distribution"
+path = "examples/3d/surfels_distribution.rs"
 
-[package.metadata.example.surfels_test]
+[package.metadata.example.surfels_distribution]
 name = "Surfels Test"
-description = "Surfel testing example."
+description = "Testing of surfel distribution."
 category = "3D Rendering"
 wasm = false
 

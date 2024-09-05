@@ -10,18 +10,13 @@ use bevy::{
         GlobalIlluminationPlugin, GlobalIlluminationSettings, GlobalIlluminationSupported,
     },
     prelude::*,
-    render::{camera::CameraMainTextureUsages, mesh::PlaneMeshBuilder},
+    render::camera::CameraMainTextureUsages,
 };
-use camera_controller::{CameraController, CameraControllerPlugin};
-use rand::distributions::Standard;
+use camera_controller::CameraController;
 
 fn main() {
     App::new()
-        .add_plugins((
-            DefaultPlugins,
-            GlobalIlluminationPlugin,
-            CameraControllerPlugin,
-        ))
+        .add_plugins((DefaultPlugins, GlobalIlluminationPlugin))
         .add_systems(
             Startup,
             (
@@ -29,25 +24,14 @@ fn main() {
                 setup.run_if(resource_exists::<GlobalIlluminationSupported>),
             ),
         )
-        .add_systems(
-            Update,
-            toggle.run_if(resource_exists::<GlobalIlluminationSupported>),
-        )
         .add_systems(Update, update)
         .run();
 }
 
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let mesh = meshes.add(PlaneMeshBuilder::new(Direction3d::Z, Vec2::new(1000.0, 1000.0)).build());
-    let material = materials.add(Color::WHITE);
-    commands.spawn(MaterialMeshBundle {
-        mesh,
-        material,
-        ..Default::default()
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(SceneBundle {
+        scene: asset_server.load("models/CornellBox/box_modified.glb#Scene0"),
+        ..default()
     });
 
     commands.spawn((
@@ -56,7 +40,7 @@ fn setup(
                 hdr: true,
                 ..default()
             },
-            transform: Transform::from_xyz(0.0, 0.0, 5.0).looking_to(-Vec3::Z, Vec3::Y),
+            transform: Transform::from_translation(START_POS).looking_to(Vec3::Z, Vec3::Y),
             main_texture_usages: CameraMainTextureUsages::with_storage_binding(),
             ..default()
         },
@@ -93,24 +77,28 @@ const START_FRAME: u32 = 200;
 /// Stop frame for step movement
 const STOP_FRAME: u32 = 400;
 
-const START_POS: Vec3 = Vec3::new(0.0, 0.0, 5.0);
+const START_POS: Vec3 = Vec3::new(0.0, 1.5, -3.0);
 
-const SWEEP_OFFSET: Vec3 = Vec3::new(5.0, 0.0, 0.0);
+const SWEEP_OFFSET: Vec3 = Vec3::new(0.71, 0.0, 0.0);
 
 fn sweep(t: f32) -> Vec3 {
     START_POS + SWEEP_OFFSET * t
 }
 
-const ZOOM_OUT_OFFSET: Vec3 = Vec3::new(0.0, 0.0, 5.0);
+const ZOOM_OUT_OFFSET: Vec3 = Vec3::new(0.0, 0.0, -1.0);
 
 fn zoom_out(t: f32) -> Vec3 {
     START_POS + ZOOM_OUT_OFFSET * t
 }
 
-const ZOOM_IN_OFFSET: Vec3 = Vec3::new(0.0, 0.0, -2.5);
+const ZOOM_IN_OFFSET: Vec3 = Vec3::new(0.0, 0.0, 0.5);
 
 fn zoom_in(t: f32) -> Vec3 {
     START_POS + ZOOM_IN_OFFSET * t
+}
+
+fn stay(_: f32) -> Vec3 {
+    START_POS
 }
 
 fn step(frame: u32) -> f32 {
@@ -134,26 +122,9 @@ fn jump(frame: u32) -> f32 {
 
 fn update(frame_count: Res<FrameCount>, mut camera: Query<&mut Transform, With<Camera>>) {
     let frame = frame_count.0;
+    // Swap between `step` and `jump`
     let t = step(frame);
-    let pos = sweep(t);
+    // Swap between `sweep`, `zoom_in`, `zoom_out` and `stay`
+    let pos = stay(t);
     camera.single_mut().translation = pos;
-}
-
-fn toggle(
-    key_input: Res<ButtonInput<KeyCode>>,
-    mut commands: Commands,
-    camera: Query<(Entity, Has<GlobalIlluminationSettings>), With<Camera>>,
-) {
-    if key_input.just_pressed(KeyCode::Space) {
-        let (entity, enabled) = camera.single();
-        if enabled {
-            commands
-                .entity(entity)
-                .remove::<GlobalIlluminationSettings>();
-        } else {
-            commands
-                .entity(entity)
-                .insert(GlobalIlluminationSettings::default());
-        }
-    }
 }

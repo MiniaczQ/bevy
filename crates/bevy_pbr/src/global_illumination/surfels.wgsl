@@ -454,7 +454,7 @@ fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>
 
         // Skip surfels with very different properties
         let normal_similarity = dot(surfel_surface.normal, other_surface.normal) > 0.7;
-        let position_similarity = (distance(surfel_surface.position, other_surface.position) / surfel_irradiance.distance) < 1000.0;
+        let position_similarity = (distance(surfel_surface.position, other_surface.position) / surfel_irradiance.distance) < 1.0;
         if !(normal_similarity && position_similarity) {
             continue;
         }
