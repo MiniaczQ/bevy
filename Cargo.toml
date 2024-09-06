@@ -715,7 +715,17 @@ path = "examples/3d/surfels_distribution.rs"
 
 [package.metadata.example.surfels_distribution]
 name = "Surfels Test"
-description = "Testing of surfel distribution."
+description = "Testing of surfels distribution."
+category = "3D Rendering"
+wasm = false
+
+[[example]]
+name = "surfels_performance"
+path = "examples/3d/surfels_performance.rs"
+
+[package.metadata.example.surfels_performance]
+name = "Surfels Test"
+description = "Testing of surfels performance."
 category = "3D Rendering"
 wasm = false
 

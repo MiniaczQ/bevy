@@ -408,7 +408,7 @@ fn surfels_sample_lights(@builtin(global_invocation_id) global_id: vec3<u32>) {
     for (var i = 0u; i < LIGHT_SAMPLES; i++) {
         let light_id = rand_range_u(MAX_SURFELS + light_count, &rng);
         let light_rng = rng;
-        var sample = sample_light_rt(light_id, &rng, surfel_surface.position, surfel_surface.normal);
+        var sample = sample_light_no_rt(light_id, &rng, surfel_surface.position, surfel_surface.normal);
         let p_hat = tonemapping_luminance(sample.irradiance * brdf);
         // p_hat * W
         W = f32(MAX_SURFELS + light_count) / sample.pdf;
@@ -461,7 +461,7 @@ fn surfels_sample_neighbours(@builtin(global_invocation_id) global_id: vec3<u32>
 
         let other_sample = other_irradiance.sample;
         sample_rng = other_sample.light_rng;
-        var sample = sample_light_rt(other_sample.light_id, &sample_rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
+        var sample = sample_light_no_rt(other_sample.light_id, &sample_rng, surfel_surface.position, surfel_surface.normal); // Ignore PDF
         let p_hat = tonemapping_luminance(sample.irradiance * brdf);
         // p_hat(x) * W
         let w = p_hat * other_sample.light_weight;

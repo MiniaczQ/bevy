@@ -23,7 +23,7 @@ NAMES = [
 ]
 
 for test_file, name in zip(TEST_FILES, NAMES):
-    path = f"python/data/{test_file}.csv"
+    path = f"testing/distribution/data/{test_file}.csv"
     with open(path, "r") as file:
         counts = np.array([[int(v) for v in vs] for vs in csv.reader(file)])
         total = np.sum(counts)
@@ -52,5 +52,5 @@ for test_file, name in zip(TEST_FILES, NAMES):
         )
 
         plt.tight_layout()
-        plt.savefig(f"python/imgs/{test_file}_heatmap.png", dpi=600, transparent=True)
+        plt.savefig(f"testing/distribution/imgs/{test_file}_heatmap.png", dpi=600, transparent=True)
         plt.clf()
