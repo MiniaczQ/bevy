@@ -4,7 +4,7 @@ from sklearn.metrics import mean_squared_error
 from skimage.metrics import structural_similarity
 
 INPUT_FILES = ["blender", "godot_4", "unreal_engine_5", "surfels"]
-NAMES = ["Blender", "Godot 4", "Unreal Engine 5", "Surfele"]
+NAMES = ["Blender", "Godot", "Unreal Engine 5", "Surfele"]
 
 images = []
 for input_file in INPUT_FILES:

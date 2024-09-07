@@ -39,7 +39,7 @@ for test_file, name in zip(TEST_FILES, NAMES):
                 plt.text(j, i, counts[i, j], ha="center", va="center", color="w")
 
         #cbar = plt.colorbar(im)
-        plt.title(name)
+        #plt.title(name)
         plt.tick_params(
             top=False,
             bottom=False,

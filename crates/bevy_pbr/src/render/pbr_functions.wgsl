@@ -440,7 +440,7 @@ fn apply_pbr_lighting(
 
 // Correct usage
 #ifdef GLOBAL_ILLUMINATION
-    indirect_light += textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
+    indirect_light = textureLoad(view_bindings::global_illumination_diffuse, vec2<i32>(in.frag_coord.xy)).rgb;
 #endif
 
     // Total light
