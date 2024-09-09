@@ -15,7 +15,7 @@ STAGES = [
     "Wstępne próbkowanie surfeli",
     "Współdzielenie próbek pomiędzy surfelami",
     "Zaktualizowanie jasności surfela",
-    "Zapisanie oświetlenie pikseli w teksturze",
+    "Obliczenie i zapisanie oświetlenia pikseli w teksturze",
 ]
 
 for name, input_file in zip(NAMES, INPUT_FILES):
@@ -30,7 +30,7 @@ for name, input_file in zip(NAMES, INPUT_FILES):
     plt.xlim((0.001, 30))
     plt.xscale("log")
     plt.xlabel("Czas na obliczenie kroku [ms]")
-    #plt.title(name)
+    # plt.title(name)
     plt.tight_layout()
     plt.savefig(
         f"testing/performance/stage/imgs/{input_file}.png", dpi=600, transparent=True
