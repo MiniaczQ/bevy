@@ -1,3 +1,5 @@
+use std::any::type_name;
+
 use bevy_ecs::{
     entity::Entity,
     query::{QuerySingleError, With},
@@ -8,11 +10,8 @@ use bevy_utils::tracing::warn;
 
 use crate::{data::StateData, state::State, GlobalStateMarker};
 
-/// Command for inserting global state into the world.
 struct InsertGlobalState<S: State> {
-    /// Initial state value.
     state: Option<S>,
-    /// Whether to overwrite the current state value if it already exists.
     overwrite: bool,
 }
 
@@ -63,11 +62,8 @@ impl<S: State + Send + Sync + 'static> Command for InsertGlobalState<S> {
     }
 }
 
-/// Command for updating global or local state.
 struct SetStateDeferred<S: State> {
-    /// Next state value.
     next: Option<S>,
-    /// Local entity or [`None`] for global state.
     local: Option<Entity>,
 }
 
@@ -79,15 +75,32 @@ impl<S: State> SetStateDeferred<S> {
 
 impl<S: State> Command for SetStateDeferred<S> {
     fn apply(self, world: &mut World) {
-        let entity = self.local.unwrap_or(
-            world
-                .query_filtered::<Entity, With<GlobalStateMarker>>()
-                .single(world), // TODO: error handling
-        );
-        let mut state = world
-            .query::<&mut StateData<S>>()
-            .get_mut(world, entity)
-            .unwrap(); // TODO: error handling
+        let entity = match self.local {
+            Some(entity) => entity,
+            None => {
+                match world
+                    .query_filtered::<Entity, With<GlobalStateMarker>>()
+                    .get_single(world)
+                {
+                    Err(QuerySingleError::NoEntities(_)) => {
+                        warn!("Set global state command failed, no global state entity exists.");
+                        return;
+                    }
+                    Err(QuerySingleError::MultipleEntities(_)) => {
+                        warn!("Set global state command failed, multiple global state entities exist.");
+                        return;
+                    }
+                    Ok(entity) => entity,
+                }
+            }
+        };
+        let Ok(mut state) = world.query::<&mut StateData<S>>().get_mut(world, entity) else {
+            warn!(
+                "Set state command failed, entity does not have state {}",
+                type_name::<S>()
+            );
+            return;
+        };
         state.next = Some(self.next);
     }
 }

@@ -5,26 +5,19 @@ use bevy_ecs::{
 
 use crate::state::{State, StateSet};
 
-/// State data.
+/// Data of the state.
 #[derive(Debug)]
 pub struct StateData<S: State> {
-    /// Counter of reentrant transitions for the [`Self::current`] state.
-    /// If this value were to overflow, it wraps.
-    pub(crate) reenters: usize,
-    /// This is the previous (different) state.
-    /// In case of reentries check [`Self::reenters`].
+    pub(crate) is_reentrant: bool,
     pub(crate) previous: Option<S>,
-    /// Current state.
     pub(crate) current: Option<S>,
-    /// Next requested state.
-    /// Note that this value is processed through [`State::on_update`] as opposed to directly mutating [`Self::current`].
     pub(crate) next: Option<Option<S>>,
 }
 
 impl<S: State> Default for StateData<S> {
     fn default() -> Self {
         Self {
-            reenters: 0,
+            is_reentrant: false,
             previous: None,
             current: None,
             next: None,
@@ -58,9 +51,9 @@ impl<S: State> StateData<S> {
 
     pub(crate) fn advance(&mut self, next: Option<S>) {
         if next == self.current {
-            self.reenters = self.reenters.wrapping_add(1);
+            self.is_reentrant = true;
         } else {
-            self.reenters = 0;
+            self.is_reentrant = false;
             self.previous = self.current.take();
             self.current = next;
         }
@@ -68,23 +61,26 @@ impl<S: State> StateData<S> {
 }
 
 impl<S: State> StateData<S> {
-    /// Returns the [`StateData<S>::current`].
-    pub fn get_current(&self) -> Option<&S> {
+    /// Returns the current state.
+    pub fn current(&self) -> Option<&S> {
         self.current.as_ref()
     }
 
-    /// Returns the [`StateData<S>::previous`].
-    pub fn get_previous(&self) -> Option<&S> {
+    /// Returns the previous, different state.
+    /// If the current state was reentered, this value won't be overwritten,
+    /// instead the [`Self::is_reentrant()`] flag will be raised.
+    pub fn previous(&self) -> Option<&S> {
         self.previous.as_ref()
     }
 
-    /// Returns the [`StateData<S>::next`].
-    pub fn get_next(&self) -> Option<Option<&S>> {
+    /// Next requested state.
+    /// Note that this value is processed during [`State::update`] as opposed to directly mutating the current value.
+    pub fn next(&self) -> Option<Option<&S>> {
         self.next.as_ref().map(Option::as_ref)
     }
 
-    /// Returns the [`StateData<S>::reenters`].
-    pub fn reenters(&self) -> usize {
-        self.reenters
+    /// Returns whether the current state was reentered.
+    pub fn is_reentrant(&self) -> bool {
+        self.is_reentrant
     }
 }

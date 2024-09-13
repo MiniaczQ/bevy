@@ -78,7 +78,7 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
         schedules.entry(StateTransition).add_systems(
             |states: Query<(Entity, &StateData<Self>)>, mut commands: Commands| {
                 for (entity, state) in states.iter() {
-                    if state.get_next().is_some() {
+                    if state.next().is_some() {
                         commands.trigger_targets(StateUpdate::<Self>::default(), entity);
                     }
                 }

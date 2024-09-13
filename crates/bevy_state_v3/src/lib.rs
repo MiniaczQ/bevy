@@ -7,36 +7,16 @@ mod state;
 
 use std::marker::PhantomData;
 
-use bevy_ecs::{
-    component::Component,
-    query::With,
-    system::{Query, SystemParam},
-};
-use data::StateData;
+use bevy_ecs::component::Component;
 use state::State;
 
 /// Marker component for global states.
 #[derive(Component)]
 pub struct GlobalStateMarker;
 
-/// Helper [`SystemParam`] for accessing global state.
-#[derive(SystemParam)]
-pub struct GlobalState<'w, 's, S: State + Send + Sync + 'static> {
-    query: Query<'w, 's, &'static StateData<S>, With<GlobalStateMarker>>,
-}
-
-impl<'w, 's, S: State + Send + Sync + 'static> GlobalState<'w, 's, S> {
-    /// Returns the [`StateData<S>`] if state exists, panics otherwise.
-    pub fn get(&self) -> &StateData<S> {
-        self.query.single()
-    }
-
-    /// Returns the [`StateData<S>`] if state exists, [`None`] otherwise.
-    pub fn try_get(&self) -> Option<&StateData<S>> {
-        self.query.get_single().ok()
-    }
-}
-
+/// Edge between two states in a hierarchy.
+/// `C` is dependent on `P`, all updates to `P` result in updates to `C`.
+/// Edges between a type `S` with itself are used for running updates.
 #[derive(Component)]
 struct StateEdge<P: State, C: State>(PhantomData<(P, C)>);
 
@@ -52,8 +32,9 @@ mod tests {
 
     use crate::{
         commands::CommandsExtStates,
+        data::StateData,
         state::{StateSet, StateTransition},
-        State, StateData,
+        State,
     };
 
     #[derive(Debug, Default, PartialEq)]
@@ -84,7 +65,7 @@ mod tests {
             next: Option<Option<Self>>,
             manual: <<<Self as State>::Dependencies as StateSet>::Data as WorldQuery>::Item<'_>,
         ) -> Option<Option<Self>> {
-            match (manual.get_current(), next) {
+            match (manual.current(), next) {
                 // If next was requested, ignore it.
                 (_, Some(_)) => None,
                 // If parent is valid, enable the state.
@@ -109,7 +90,7 @@ mod tests {
             next: Option<Option<Self>>,
             manual: <<<Self as State>::Dependencies as StateSet>::Data as WorldQuery>::Item<'_>,
         ) -> Option<Option<Self>> {
-            match (manual.get_current(), next) {
+            match (manual.current(), next) {
                 // If parent state is valid, respect requested enabled next state.
                 (Some(ManualState::C), Some(Some(next))) => Some(Some(next)),
                 // If parent state is valid and requested next state disables the state, ignore it.
@@ -128,7 +109,7 @@ mod tests {
 
     fn assert_current_state<S: State>(world: &mut World, _target: Option<S>) {
         let state = get_global_state::<S>(world);
-        assert!(matches!(state.get_current(), _target));
+        assert!(matches!(state.current(), _target));
     }
 
     #[test]
