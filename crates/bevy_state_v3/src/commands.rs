@@ -10,39 +10,45 @@ use bevy_utils::tracing::warn;
 
 use crate::{data::StateData, state::State, GlobalStateMarker};
 
-struct InsertGlobalState<S: State> {
-    state: Option<S>,
+struct InsertStateCommand<S: State> {
+    local: Option<Entity>,
+    next: Option<S>,
     overwrite: bool,
 }
 
-impl<S: State> InsertGlobalState<S> {
-    fn new(state: Option<S>, force: bool) -> Self {
+impl<S: State> InsertStateCommand<S> {
+    fn new(local: Option<Entity>, next: Option<S>, overwrite: bool) -> Self {
         Self {
-            state,
-            overwrite: force,
+            local,
+            next,
+            overwrite,
         }
     }
 }
 
-impl<S: State + Send + Sync + 'static> Command for InsertGlobalState<S> {
+impl<S: State + Send + Sync + 'static> Command for InsertStateCommand<S> {
     fn apply(self, world: &mut World) {
-        // Register a global state entity
-        let result = world
-            .query_filtered::<Entity, With<GlobalStateMarker>>()
-            .get_single(world);
-        let entity = match result {
-            Ok(entity) => entity,
-            Err(QuerySingleError::NoEntities(_)) => world.spawn(GlobalStateMarker).id(),
-            Err(QuerySingleError::MultipleEntities(_)) => {
-                warn!(
+        let entity = match self.local {
+            Some(entity) => entity,
+            None => {
+                let result = world
+                    .query_filtered::<Entity, With<GlobalStateMarker>>()
+                    .get_single(world);
+                match result {
+                    Ok(entity) => entity,
+                    Err(QuerySingleError::NoEntities(_)) => world.spawn(GlobalStateMarker).id(),
+                    Err(QuerySingleError::MultipleEntities(_)) => {
+                        warn!(
                     "Insert global state command failed, multiple entities have the `GlobalStateMarker` component."
                 );
-                return;
+                        return;
+                    }
+                }
             }
         };
 
         // Register storage for state `S`.
-        let new_data = StateData::new(self.state);
+        let new_data = StateData::new(self.next);
         let state_data = world
             .query::<&mut StateData<S>>()
             .get_mut(world, entity)
@@ -54,26 +60,28 @@ impl<S: State + Send + Sync + 'static> Command for InsertGlobalState<S> {
             (None, _) => {
                 world.entity_mut(entity).insert(new_data);
             }
-            _ => {}
+            (Some(_), false) => {
+                warn!(
+                    "Attempted to insert state {}, but it was already present.",
+                    type_name::<S>()
+                );
+            }
         }
-
-        // Register observers for update.
-        S::register_state(world);
     }
 }
 
-struct SetStateDeferred<S: State> {
-    next: Option<S>,
+struct NextStateCommand<S: State> {
     local: Option<Entity>,
+    next: Option<S>,
 }
 
-impl<S: State> SetStateDeferred<S> {
-    fn new(next: Option<S>, local: Option<Entity>) -> Self {
-        Self { next, local }
+impl<S: State> NextStateCommand<S> {
+    fn new(local: Option<Entity>, next: Option<S>) -> Self {
+        Self { local, next }
     }
 }
 
-impl<S: State> Command for SetStateDeferred<S> {
+impl<S: State> Command for NextStateCommand<S> {
     fn apply(self, world: &mut World) {
         let entity = match self.local {
             Some(entity) => entity,
@@ -106,54 +114,78 @@ impl<S: State> Command for SetStateDeferred<S> {
 }
 
 #[doc(hidden)]
-pub trait CommandsExtStates {
+/// For [`Commands`] this will be a deferred operation, but for everything else the effect will be immediate.
+pub trait StatesExt {
     /// Inserts a global state.
     /// If `overwrite` is enabled, this will override the existing state.
-    fn insert_global_state<S: State>(&mut self, value: Option<S>, overwrite: bool);
+    /// If `local` is `None`, this will insert the global state.
+    fn insert_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>, overwrite: bool);
 
     /// Set the next value of the state.
-    /// This value will be used to update the state in the [`StateTransition`] schedule.
-    fn set_state<S: State>(&mut self, next: Option<S>, local: Option<Entity>);
+    /// This value will be used to update the state in the [`StateTransition`](crate::state::StateTransition) schedule.
+    /// If `local` is `None`, this will update the global state.
+    fn next_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>);
+
+    /// Registers state in the world.
+    fn register_state<S: State>(&mut self);
 }
 
-impl CommandsExtStates for Commands<'_, '_> {
-    fn insert_global_state<S: State>(&mut self, state: Option<S>, overwrite: bool) {
-        self.add(InsertGlobalState::new(state, overwrite))
+impl StatesExt for Commands<'_, '_> {
+    fn insert_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>, overwrite: bool) {
+        self.add(InsertStateCommand::new(local, next, overwrite))
     }
 
-    fn set_state<S: State>(&mut self, next: Option<S>, local: Option<Entity>) {
-        self.add(SetStateDeferred::new(next, local))
+    fn next_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>) {
+        self.add(NextStateCommand::new(local, next))
+    }
+
+    fn register_state<S: State>(&mut self) {
+        self.add(|world: &mut World| {
+            S::register_state(world);
+        });
     }
 }
 
-impl CommandsExtStates for World {
-    fn insert_global_state<S: State>(&mut self, value: Option<S>, overwrite: bool) {
-        self.commands().insert_global_state(value, overwrite);
+impl StatesExt for World {
+    fn insert_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>, overwrite: bool) {
+        InsertStateCommand::new(local, next, overwrite).apply(self);
     }
 
-    fn set_state<S: State>(&mut self, next: Option<S>, local: Option<Entity>) {
-        self.commands().set_state(next, local);
+    fn next_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>) {
+        NextStateCommand::new(local, next).apply(self);
+    }
+
+    fn register_state<S: State>(&mut self) {
+        S::register_state(self);
     }
 }
 
 #[cfg(feature = "bevy_app")]
-impl CommandsExtStates for bevy_app::SubApp {
-    fn insert_global_state<S: State>(&mut self, value: Option<S>, overwrite: bool) {
-        self.world_mut().insert_global_state(value, overwrite);
+impl StatesExt for bevy_app::SubApp {
+    fn insert_state<S: State>(&mut self, local: Option<Entity>, value: Option<S>, overwrite: bool) {
+        self.world_mut().insert_state(local, value, overwrite);
     }
 
-    fn set_state<S: State>(&mut self, next: Option<S>, local: Option<Entity>) {
-        self.world_mut().set_state(next, local);
+    fn next_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>) {
+        self.world_mut().next_state(local, next);
+    }
+
+    fn register_state<S: State>(&mut self) {
+        self.world_mut().register_state::<S>();
     }
 }
 
 #[cfg(feature = "bevy_app")]
-impl CommandsExtStates for bevy_app::App {
-    fn insert_global_state<S: State>(&mut self, value: Option<S>, overwrite: bool) {
-        self.main_mut().insert_global_state(value, overwrite);
+impl StatesExt for bevy_app::App {
+    fn insert_state<S: State>(&mut self, local: Option<Entity>, value: Option<S>, overwrite: bool) {
+        self.main_mut().insert_state(local, value, overwrite);
     }
 
-    fn set_state<S: State>(&mut self, next: Option<S>, local: Option<Entity>) {
-        self.main_mut().set_state(next, local);
+    fn next_state<S: State>(&mut self, local: Option<Entity>, next: Option<S>) {
+        self.main_mut().next_state(local, next);
+    }
+
+    fn register_state<S: State>(&mut self) {
+        self.main_mut().register_state::<S>();
     }
 }

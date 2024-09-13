@@ -31,7 +31,7 @@ mod tests {
     use bevy_ecs::{query::WorldQuery, schedule::Schedules, world::World};
 
     use crate::{
-        commands::CommandsExtStates,
+        commands::StatesExt,
         data::StateData,
         state::{StateSet, StateTransition},
         State,
@@ -103,63 +103,101 @@ mod tests {
         }
     }
 
-    fn get_global_state<S: State>(world: &mut World) -> &StateData<S> {
-        world.query::<&StateData<S>>().single(world)
-    }
-
-    fn assert_current_state<S: State>(world: &mut World, _target: Option<S>) {
-        let state = get_global_state::<S>(world);
+    fn assert_only_state<S: State>(world: &mut World, _target: Option<S>) {
+        let state = world.query::<&StateData<S>>().single(world);
         assert!(matches!(state.current(), _target));
     }
 
     #[test]
-    fn test() {
+    fn global_state() {
         let mut world = World::new();
         world.init_resource::<Schedules>();
-        ManualState::register_state(&mut world);
-        ComputedState::register_state(&mut world);
-        SubState::register_state(&mut world);
+        world.register_state::<ManualState>();
+        world.register_state::<ComputedState>();
+        world.register_state::<SubState>();
 
-        world.insert_global_state(None::<ManualState>, false);
-        world.insert_global_state(None::<ComputedState>, false);
-        world.insert_global_state(None::<SubState>, false);
-        world.flush_commands();
+        world.insert_state(None, None::<ManualState>, false);
+        world.insert_state(None, None::<ComputedState>, false);
+        world.insert_state(None, None::<SubState>, false);
         world.run_schedule(StateTransition);
 
-        assert_current_state(&mut world, None::<ManualState>);
-        assert_current_state(&mut world, None::<ComputedState>);
-        assert_current_state(&mut world, None::<SubState>);
+        assert_only_state(&mut world, None::<ManualState>);
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, None::<SubState>);
 
-        world.set_state(Some(ManualState::B), None);
-        world.flush_commands();
+        world.next_state(None, Some(ManualState::B));
         world.run_schedule(StateTransition);
 
-        assert_current_state(&mut world, Some(ManualState::B));
-        assert_current_state(&mut world, Some(ComputedState));
-        assert_current_state(&mut world, None::<SubState>);
+        assert_only_state(&mut world, Some(ManualState::B));
+        assert_only_state(&mut world, Some(ComputedState));
+        assert_only_state(&mut world, None::<SubState>);
 
-        world.set_state(Some(ManualState::C), None);
-        world.flush_commands();
+        world.next_state(None, Some(ManualState::C));
         world.run_schedule(StateTransition);
 
-        assert_current_state(&mut world, Some(ManualState::C));
-        assert_current_state(&mut world, None::<ComputedState>);
-        assert_current_state(&mut world, Some(SubState::X));
+        assert_only_state(&mut world, Some(ManualState::C));
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, Some(SubState::X));
 
-        world.set_state(Some(SubState::Y), None);
-        world.flush_commands();
+        world.next_state(None, Some(SubState::Y));
         world.run_schedule(StateTransition);
 
-        assert_current_state(&mut world, Some(ManualState::C));
-        assert_current_state(&mut world, None::<ComputedState>);
-        assert_current_state(&mut world, Some(SubState::Y));
+        assert_only_state(&mut world, Some(ManualState::C));
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, Some(SubState::Y));
 
-        world.set_state(None::<ManualState>, None);
-        world.flush_commands();
+        world.next_state(None, None::<ManualState>);
         world.run_schedule(StateTransition);
 
-        assert_current_state(&mut world, None::<ManualState>);
-        assert_current_state(&mut world, None::<ComputedState>);
-        assert_current_state(&mut world, None::<SubState>);
+        assert_only_state(&mut world, None::<ManualState>);
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, None::<SubState>);
+    }
+
+    #[test]
+    fn local_state() {
+        let mut world = World::new();
+        world.init_resource::<Schedules>();
+        world.register_state::<ManualState>();
+        world.register_state::<ComputedState>();
+        world.register_state::<SubState>();
+
+        let entity = world.spawn_empty().id();
+        world.insert_state(Some(entity), None::<ManualState>, false);
+        world.insert_state(Some(entity), None::<ComputedState>, false);
+        world.insert_state(Some(entity), None::<SubState>, false);
+        world.run_schedule(StateTransition);
+
+        assert_only_state(&mut world, None::<ManualState>);
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, None::<SubState>);
+
+        world.next_state(Some(entity), Some(ManualState::B));
+        world.run_schedule(StateTransition);
+
+        assert_only_state(&mut world, Some(ManualState::B));
+        assert_only_state(&mut world, Some(ComputedState));
+        assert_only_state(&mut world, None::<SubState>);
+
+        world.next_state(Some(entity), Some(ManualState::C));
+        world.run_schedule(StateTransition);
+
+        assert_only_state(&mut world, Some(ManualState::C));
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, Some(SubState::X));
+
+        world.next_state(Some(entity), Some(SubState::Y));
+        world.run_schedule(StateTransition);
+
+        assert_only_state(&mut world, Some(ManualState::C));
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, Some(SubState::Y));
+
+        world.next_state(Some(entity), None::<ManualState>);
+        world.run_schedule(StateTransition);
+
+        assert_only_state(&mut world, None::<ManualState>);
+        assert_only_state(&mut world, None::<ComputedState>);
+        assert_only_state(&mut world, None::<SubState>);
     }
 }
