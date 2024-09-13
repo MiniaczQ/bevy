@@ -6,9 +6,9 @@ use crate::state::State;
 
 /// Triggered when `next` is set during [`StateTransition`](crate::state::StateTransition) or when a dependency transitions.
 #[derive(Event)]
-pub struct OnUpdate<S: State>(PhantomData<S>);
+pub struct OnStateUpdate<S: State>(PhantomData<S>);
 
-impl<S: State> Default for OnUpdate<S> {
+impl<S: State> Default for OnStateUpdate<S> {
     fn default() -> Self {
         Self(Default::default())
     }
@@ -16,9 +16,9 @@ impl<S: State> Default for OnUpdate<S> {
 
 /// Triggered when state transitions.
 #[derive(Event)]
-pub struct OnTransition<S: State>(PhantomData<S>);
+pub struct OnStateTransition<S: State>(PhantomData<S>);
 
-impl<S: State> Default for OnTransition<S> {
+impl<S: State> Default for OnStateTransition<S> {
     fn default() -> Self {
         Self(Default::default())
     }

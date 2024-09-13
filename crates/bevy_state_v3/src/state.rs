@@ -14,7 +14,7 @@ use bevy_utils::tracing::warn;
 
 use crate::{
     data::StateData,
-    events::{OnTransition, OnUpdate},
+    events::{OnStateTransition, OnStateUpdate},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, ScheduleLabel)]
@@ -66,7 +66,7 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
             |states: Query<(Entity, &StateData<Self>)>, mut commands: Commands| {
                 for (entity, state) in states.iter() {
                     if state.next().is_some() {
-                        commands.trigger_targets(OnUpdate::<Self>::default(), entity);
+                        commands.trigger_targets(OnStateUpdate::<Self>::default(), entity);
                     }
                 }
             },
@@ -75,18 +75,21 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
 }
 
 fn state_update<S: State>(
-    trigger: Trigger<OnUpdate<S>>,
-    mut state: Query<&mut StateData<S>>,
+    trigger: Trigger<OnStateUpdate<S>>,
+    mut states: Query<&mut StateData<S>>,
     dependencies: Query<<S::Dependencies as StateSet>::Data>,
     mut commands: Commands,
 ) {
     let entity = trigger.entity();
-    let mut state = state.get_mut(entity).unwrap();
+    let mut state = states.get_mut(entity).unwrap();
     let dependencies = dependencies.get(entity).unwrap();
     let next = state.next.take();
     if let Some(next) = S::update(next, dependencies) {
+        // TODO: run pre-update transitions here
+        let mut state = states.get_mut(entity).unwrap();
         state.advance(next);
-        commands.trigger_targets(OnTransition::<S>::default(), entity);
+        commands.trigger_targets(OnStateTransition::<S>::default(), entity);
+        // TODO: run post-update transitions here
     }
 }
 
@@ -182,9 +185,9 @@ fn register_propatation<P: State, C: State>(world: &mut World) {
     world.spawn((
         StateEdge::<P, C>::default(),
         Observer::new(
-            |trigger: Trigger<OnTransition<P>>, mut commands: Commands| {
+            |trigger: Trigger<OnStateTransition<P>>, mut commands: Commands| {
                 let entity = trigger.entity();
-                commands.trigger_targets(OnUpdate::<C>::default(), entity);
+                commands.trigger_targets(OnStateUpdate::<C>::default(), entity);
             },
         ),
     ));
