@@ -1,7 +1,7 @@
-use std::any::type_name;
+use std::{any::type_name, marker::PhantomData};
 
 use bevy_ecs::{
-    component::{Components, RequiredComponents},
+    component::{Component, Components, RequiredComponents},
     entity::Entity,
     observer::{Observer, Trigger},
     query::{QuerySingleError, ReadOnlyQueryData, With, WorldQuery},
@@ -10,9 +10,12 @@ use bevy_ecs::{
     system::{Commands, Query},
     world::World,
 };
-use bevy_utils::tracing::{info, warn};
+use bevy_utils::tracing::warn;
 
-use crate::{data::StateData, events::StateUpdate, StateEdge};
+use crate::{
+    data::StateData,
+    events::{OnTransition, OnUpdate},
+};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, ScheduleLabel)]
 pub struct StateTransition;
@@ -21,9 +24,6 @@ pub struct StateTransition;
 pub trait State: Sized + PartialEq + Send + Sync + 'static {
     /// Parent states which this state depends on.
     type Dependencies: StateSet;
-
-    /// Order in the state update hierarchy.
-    const ORDER: usize = Self::Dependencies::ORDER + 1;
 
     /// Called when a [`StateData::next`] value is set or any of the [`Self::Dependencies`] change.
     /// If the returned value is [`Some`] it's used to update the [`StateData<Self>`].
@@ -55,20 +55,7 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
         // Register update observer for state `S`.
         world.spawn((
             StateEdge::<Self, Self>::default(),
-            Observer::new(
-                |trigger: Trigger<StateUpdate<Self>>,
-                 mut state: Query<&mut StateData<Self>>,
-                 dependencies: Query<<Self::Dependencies as StateSet>::Data>| {
-                    let entity = trigger.entity();
-                    let mut state = state.get_mut(entity).unwrap();
-                    let dependencies = dependencies.get(entity).unwrap();
-                    let next = state.next.take();
-                    if let Some(next) = Self::update(next, dependencies) {
-                        state.advance(next);
-                    }
-                    info!("Update on: {:?}", type_name::<Self>());
-                },
-            ),
+            Observer::new(state_update::<Self>),
         ));
 
         // Register propagation from parent states.
@@ -79,7 +66,7 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
             |states: Query<(Entity, &StateData<Self>)>, mut commands: Commands| {
                 for (entity, state) in states.iter() {
                     if state.next().is_some() {
-                        commands.trigger_targets(StateUpdate::<Self>::default(), entity);
+                        commands.trigger_targets(OnUpdate::<Self>::default(), entity);
                     }
                 }
             },
@@ -87,11 +74,24 @@ pub trait State: Sized + PartialEq + Send + Sync + 'static {
     }
 }
 
+fn state_update<S: State>(
+    trigger: Trigger<OnUpdate<S>>,
+    mut state: Query<&mut StateData<S>>,
+    dependencies: Query<<S::Dependencies as StateSet>::Data>,
+    mut commands: Commands,
+) {
+    let entity = trigger.entity();
+    let mut state = state.get_mut(entity).unwrap();
+    let dependencies = dependencies.get(entity).unwrap();
+    let next = state.next.take();
+    if let Some(next) = S::update(next, dependencies) {
+        state.advance(next);
+        commands.trigger_targets(OnTransition::<S>::default(), entity);
+    }
+}
+
 /// All possible combinations of state dependencies.
 pub trait StateSet {
-    /// Highest order of source states.
-    const ORDER: usize;
-
     /// Parameters provided to [`State::on_update`].
     type Data: ReadOnlyQueryData;
 
@@ -106,18 +106,7 @@ pub trait StateSet {
     fn register_update_propagation<S: State>(world: &mut World);
 }
 
-fn register_propatation<P: State, C: State>(world: &mut World) {
-    world.spawn((
-        StateEdge::<P, C>::default(),
-        Observer::new(|trigger: Trigger<StateUpdate<P>>, mut commands: Commands| {
-            let entity = trigger.entity();
-            commands.trigger_targets(StateUpdate::<C>::default(), entity);
-        }),
-    ));
-}
-
 impl StateSet for () {
-    const ORDER: usize = 0;
     type Data = ();
 
     fn register_required_components(
@@ -129,8 +118,8 @@ impl StateSet for () {
 
     fn register_update_propagation<S: State>(_world: &mut World) {}
 }
+
 impl<S1: State> StateSet for S1 {
-    const ORDER: usize = S1::ORDER;
     type Data = &'static StateData<S1>;
 
     fn register_required_components(
@@ -145,8 +134,9 @@ impl<S1: State> StateSet for S1 {
         register_propatation::<S1, S>(world);
     }
 }
+
+// TODO: use `all_tuples_with_size!()``
 impl<S1: State, S2: State> StateSet for (S1, S2) {
-    const ORDER: usize = usize_max(S1::ORDER, S2::ORDER);
     type Data = (&'static StateData<S1>, &'static StateData<S2>);
 
     fn register_required_components(
@@ -163,8 +153,8 @@ impl<S1: State, S2: State> StateSet for (S1, S2) {
         register_propatation::<S2, S>(world);
     }
 }
+
 impl<S1: State, S2: State, S3: State> StateSet for (S1, S2, S3) {
-    const ORDER: usize = usize_max(S1::ORDER, usize_max(S2::ORDER, S3::ORDER));
     type Data = (
         &'static StateData<S1>,
         &'static StateData<S2>,
@@ -187,11 +177,31 @@ impl<S1: State, S2: State, S3: State> StateSet for (S1, S2, S3) {
         register_propatation::<S3, S>(world);
     }
 }
-/// Const time usize max.
-const fn usize_max(a: usize, b: usize) -> usize {
-    if a > b {
-        a
-    } else {
-        b
+
+fn register_propatation<P: State, C: State>(world: &mut World) {
+    world.spawn((
+        StateEdge::<P, C>::default(),
+        Observer::new(
+            |trigger: Trigger<OnTransition<P>>, mut commands: Commands| {
+                let entity = trigger.entity();
+                commands.trigger_targets(OnUpdate::<C>::default(), entity);
+            },
+        ),
+    ));
+}
+
+/// Marker component for global states.
+#[derive(Component)]
+pub struct GlobalStateMarker;
+
+/// Edge between two states in a hierarchy.
+/// `C` is dependent on `P`, all updates to `P` result in updates to `C`.
+/// Edges between a type `S` with itself are used for running updates.
+#[derive(Component)]
+pub struct StateEdge<P: State, C: State>(PhantomData<(P, C)>);
+
+impl<P: State, C: State> Default for StateEdge<P, C> {
+    fn default() -> Self {
+        Self(PhantomData::default())
     }
 }

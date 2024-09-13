@@ -5,27 +5,6 @@ mod data;
 mod events;
 mod state;
 
-use std::marker::PhantomData;
-
-use bevy_ecs::component::Component;
-use state::State;
-
-/// Marker component for global states.
-#[derive(Component)]
-pub struct GlobalStateMarker;
-
-/// Edge between two states in a hierarchy.
-/// `C` is dependent on `P`, all updates to `P` result in updates to `C`.
-/// Edges between a type `S` with itself are used for running updates.
-#[derive(Component)]
-struct StateEdge<P: State, C: State>(PhantomData<(P, C)>);
-
-impl<P: State, C: State> Default for StateEdge<P, C> {
-    fn default() -> Self {
-        Self(PhantomData::default())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use bevy_ecs::{query::WorldQuery, schedule::Schedules, world::World};
@@ -33,8 +12,7 @@ mod tests {
     use crate::{
         commands::StatesExt,
         data::StateData,
-        state::{StateSet, StateTransition},
-        State,
+        state::{State, StateSet, StateTransition},
     };
 
     #[derive(Debug, Default, PartialEq)]
@@ -106,6 +84,7 @@ mod tests {
     fn assert_only_state<S: State>(world: &mut World, _target: Option<S>) {
         let state = world.query::<&StateData<S>>().single(world);
         assert!(matches!(state.current(), _target));
+        assert!(matches!(state.next(), None));
     }
 
     #[test]

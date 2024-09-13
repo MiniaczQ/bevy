@@ -8,7 +8,7 @@ use bevy_ecs::{
 };
 use bevy_utils::tracing::warn;
 
-use crate::{data::StateData, state::State, GlobalStateMarker};
+use crate::{data::StateData, state::{GlobalStateMarker, State}};
 
 struct InsertStateCommand<S: State> {
     local: Option<Entity>,
