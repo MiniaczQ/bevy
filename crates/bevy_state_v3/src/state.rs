@@ -9,9 +9,12 @@ use bevy_ecs::{
     system::{Commands, Query},
     world::World,
 };
-use bevy_utils::tracing::warn;
+use bevy_utils::{all_tuples, tracing::warn};
 
-use crate::data::{StateData, StateUpdateCurrent, StateUpdateDependency};
+use crate::{
+    data::{StateData, StateUpdateCurrent, StateUpdateDependency},
+    events::{StateEnter, StateExit},
+};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, ScheduleLabel)]
 pub struct StateTransition;
@@ -141,34 +144,26 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     fn exit_system(
         mut commands: Commands,
         query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
-        node: Query<&StateGraphNode<Self>>,
     ) {
-        let node = node.single();
         for (entity, state, is_global) in query.iter() {
             if !state.updated {
                 continue;
             }
-            let local = (!is_global).then_some(entity);
-            for reactor in &node.on_enter {
-                reactor(local, state, &mut commands);
-            }
+            let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
+            commands.trigger_targets(StateExit::<Self>::default(), target);
         }
     }
 
     fn enter_system(
         mut commands: Commands,
         states: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
-        node: Query<&StateGraphNode<Self>>,
     ) {
-        let node = node.single();
         for (entity, state, is_global) in states.iter() {
             if !state.updated {
                 continue;
             }
-            let local = (!is_global).then_some(entity);
-            for reactor in &node.on_enter {
-                reactor(local, state, &mut commands);
-            }
+            let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
+            commands.trigger_targets(StateEnter::<Self>::default(), target);
         }
     }
 }
@@ -253,86 +248,68 @@ impl<S1: State> StateSet for S1 {
     }
 }
 
-// TODO: use `all_tuples!()`
-impl<S1: State, S2: State> StateSet for (S1, S2) {
-    type Query = (&'static StateData<S1>, &'static StateData<S2>);
-    type UpdateDependencies<'a> = (StateUpdateDependency<'a, S1>, StateUpdateDependency<'a, S2>);
-
-    const HIGHEST_ORDER: u32 = max_u32(S1::ORDER, S2::ORDER);
-
-    fn register_required_components(
-        components: &mut Components,
-        storages: &mut Storages,
-        required_components: &mut RequiredComponents,
-    ) {
-        required_components.register(components, storages, StateData::<S1>::default);
-        required_components.register(components, storages, StateData::<S2>::default);
-    }
-
-    fn register_states(world: &mut World) {
-        S1::register_state(world);
-        S2::register_state(world);
-    }
-
-    fn is_changed((s1, s2): &<Self::Query as WorldQuery>::Item<'_>) -> bool {
-        s1.updated || s2.updated
-    }
-
-    fn as_state_update_dependency<'a>(
-        (s1, s2): <Self::Query as WorldQuery>::Item<'a>,
-    ) -> Self::UpdateDependencies<'a> {
-        (s1.into(), s2.into())
-    }
-}
-
-impl<S1: State, S2: State, S3: State> StateSet for (S1, S2, S3) {
-    type Query = (
-        &'static StateData<S1>,
-        &'static StateData<S2>,
-        &'static StateData<S3>,
-    );
-    type UpdateDependencies<'a> = (
-        StateUpdateDependency<'a, S1>,
-        StateUpdateDependency<'a, S2>,
-        StateUpdateDependency<'a, S3>,
-    );
-
-    const HIGHEST_ORDER: u32 = max_u32(max_u32(S1::ORDER, S2::ORDER), S3::ORDER);
-
-    fn register_required_components(
-        components: &mut Components,
-        storages: &mut Storages,
-        required_components: &mut RequiredComponents,
-    ) {
-        required_components.register(components, storages, StateData::<S1>::default);
-        required_components.register(components, storages, StateData::<S2>::default);
-        required_components.register(components, storages, StateData::<S3>::default);
-    }
-
-    fn register_states(world: &mut World) {
-        S1::register_state(world);
-        S2::register_state(world);
-        S3::register_state(world);
-    }
-
-    fn is_changed((s1, s2, s3): &<Self::Query as WorldQuery>::Item<'_>) -> bool {
-        s1.updated || s2.updated || s3.updated
-    }
-
-    fn as_state_update_dependency<'a>(
-        (s1, s2, s3): <Self::Query as WorldQuery>::Item<'a>,
-    ) -> Self::UpdateDependencies<'a> {
-        (s1.into(), s2.into(), s3.into())
-    }
-}
-
-const fn max_u32(a: u32, b: u32) -> u32 {
+const fn const_max(a: u32, b: u32) -> u32 {
     if a > b {
         a
     } else {
         b
     }
 }
+
+macro_rules! max {
+    ($a:expr) => ( $a );
+    ($a:expr, $b:expr) => {
+        const_max($a, $b)
+    };
+    ($a:expr, $b:expr, $($other:expr), *) => {
+        max!(const_max($a, $b), $($other), +)
+    };
+}
+
+macro_rules! impl_state_set {
+    ($(#[$meta:meta])* $(($type:ident, $var:ident)), *) => {
+        $(#[$meta])*
+        impl<$($type: State), *> StateSet for ($($type, )*) {
+            type Query = ($(&'static StateData<$type>, )*);
+            type UpdateDependencies<'a> = ($(StateUpdateDependency<'a, $type>, )*);
+
+            const HIGHEST_ORDER: u32 = max!($($type::ORDER), +);
+
+            fn register_required_components(
+                components: &mut Components,
+                storages: &mut Storages,
+                required_components: &mut RequiredComponents,
+            ) {
+                $(required_components.register(components, storages, StateData::<$type>::default);)
+                +
+            }
+
+            fn register_states(world: &mut World) {
+                $($type::register_state(world);)
+                +
+            }
+
+            fn is_changed(($($var, )+): &<Self::Query as WorldQuery>::Item<'_>) -> bool {
+                $($var.updated) || +
+            }
+
+            fn as_state_update_dependency<'a>(
+                ($($var, )+): <Self::Query as WorldQuery>::Item<'a>,
+            ) -> Self::UpdateDependencies<'a> {
+                ($($var.into(), )+)
+            }
+        }
+    };
+}
+
+all_tuples!(
+    #[doc(fake_variadic)]
+    impl_state_set,
+    1,
+    15,
+    S,
+    s
+);
 
 /// Marker component for global states.
 #[derive(Component)]
@@ -350,20 +327,10 @@ impl<Parent: State, Child: State> Default for StateGraphEdge<Parent, Child> {
 
 /// Node of a state.
 #[derive(Component)]
-pub struct StateGraphNode<S: State> {
-    /// Reactions to state exiting.
-    pub(crate) on_exit: Vec<Box<Reaction<S>>>,
-    /// Reactions to state entering.
-    pub(crate) on_enter: Vec<Box<Reaction<S>>>,
-}
-
-type Reaction<S> = dyn Fn(Option<Entity>, &StateData<S>, &mut Commands) + Send + Sync + 'static;
+pub struct StateGraphNode<S: State>(PhantomData<S>);
 
 impl<S: State> Default for StateGraphNode<S> {
     fn default() -> Self {
-        Self {
-            on_exit: vec![],
-            on_enter: vec![],
-        }
+        Self(Default::default())
     }
 }

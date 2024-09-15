@@ -15,13 +15,15 @@ use crate::{
 
 struct InitializeStateCommand<S: State> {
     local: Option<Entity>,
+    suppress_initial_update: bool,
     _data: PhantomData<S>,
 }
 
 impl<S: State> InitializeStateCommand<S> {
-    fn new(local: Option<Entity>) -> Self {
+    fn new(local: Option<Entity>, suppress_initial_update: bool) -> Self {
         Self {
             local,
+            suppress_initial_update,
             _data: PhantomData::default(),
         }
     }
@@ -55,7 +57,9 @@ impl<S: State + Send + Sync + 'static> Command for InitializeStateCommand<S> {
             .ok();
         match state_data {
             None => {
-                world.entity_mut(entity).insert(StateData::<S>::default());
+                world
+                    .entity_mut(entity)
+                    .insert(StateData::<S>::new(self.suppress_initial_update));
             }
             Some(_) => {
                 warn!(
@@ -115,7 +119,7 @@ impl<S: State> Command for SetStateTargetCommand<S> {
 pub trait StatesExt {
     /// Initializes state.
     /// If `local` is `None`, this will work on the global state.
-    fn init_state<S: State>(&mut self, local: Option<Entity>);
+    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool);
 
     /// Set the next value of the state.
     /// This value will be used to update the state in the [`StateTransition`](crate::state::StateTransition) schedule.
@@ -127,8 +131,11 @@ pub trait StatesExt {
 }
 
 impl StatesExt for Commands<'_, '_> {
-    fn init_state<S: State>(&mut self, local: Option<Entity>) {
-        self.add(InitializeStateCommand::<S>::new(local))
+    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+        self.add(InitializeStateCommand::<S>::new(
+            local,
+            suppress_initial_update,
+        ))
     }
 
     fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
@@ -143,8 +150,8 @@ impl StatesExt for Commands<'_, '_> {
 }
 
 impl StatesExt for World {
-    fn init_state<S: State>(&mut self, local: Option<Entity>) {
-        InitializeStateCommand::<S>::new(local).apply(self);
+    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+        InitializeStateCommand::<S>::new(local, suppress_initial_update).apply(self);
     }
 
     fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
@@ -158,8 +165,9 @@ impl StatesExt for World {
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::SubApp {
-    fn init_state<S: State>(&mut self, local: Option<Entity>) {
-        self.world_mut().init_state::<S>(local);
+    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+        self.world_mut()
+            .init_state::<S>(local, suppress_initial_update);
     }
 
     fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
@@ -173,8 +181,9 @@ impl StatesExt for bevy_app::SubApp {
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::App {
-    fn init_state<S: State>(&mut self, local: Option<Entity>) {
-        self.main_mut().init_state::<S>(local);
+    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+        self.main_mut()
+            .init_state::<S>(local, suppress_initial_update);
     }
 
     fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {

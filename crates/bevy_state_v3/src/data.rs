@@ -28,7 +28,7 @@ impl<S: State> Default for StateData<S> {
     }
 }
 
-impl<S: State + Send + Sync + 'static> Component for StateData<S> {
+impl<S: State> Component for StateData<S> {
     const STORAGE_TYPE: StorageType = StorageType::Table;
 
     fn register_required_components(
@@ -45,6 +45,13 @@ impl<S: State + Send + Sync + 'static> Component for StateData<S> {
 }
 
 impl<S: State> StateData<S> {
+    pub(crate) fn new(suppress_initial_update: bool) -> Self {
+        Self {
+            updated: !suppress_initial_update,
+            ..Default::default()
+        }
+    }
+
     pub(crate) fn update(&mut self, next: Option<S>) {
         if next == self.current {
             self.is_reentrant = true;
