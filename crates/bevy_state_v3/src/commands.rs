@@ -117,6 +117,9 @@ impl<S: State> Command for SetStateTargetCommand<S> {
 #[doc(hidden)]
 /// For [`Commands`] this will be a deferred operation, but for everything else the effect will be immediate.
 pub trait StatesExt {
+    /// Registers machinery for state.
+    fn register_state<S: State>(&mut self);
+
     /// Initializes state.
     /// If `local` is `None`, this will work on the global state.
     fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool);
@@ -124,13 +127,16 @@ pub trait StatesExt {
     /// Set the next value of the state.
     /// This value will be used to update the state in the [`StateTransition`](crate::state::StateTransition) schedule.
     /// If `local` is `None`, this will work on the global state.
-    fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>);
-
-    /// Registers machinery for state.
-    fn register_state<S: State>(&mut self);
+    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>);
 }
 
 impl StatesExt for Commands<'_, '_> {
+    fn register_state<S: State>(&mut self) {
+        self.add(|world: &mut World| {
+            S::register_state(world);
+        });
+    }
+
     fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
         self.add(InitializeStateCommand::<S>::new(
             local,
@@ -138,59 +144,53 @@ impl StatesExt for Commands<'_, '_> {
         ))
     }
 
-    fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
         self.add(SetStateTargetCommand::new(local, target))
-    }
-
-    fn register_state<S: State>(&mut self) {
-        self.add(|world: &mut World| {
-            S::register_state(world);
-        });
     }
 }
 
 impl StatesExt for World {
+    fn register_state<S: State>(&mut self) {
+        S::register_state(self);
+    }
+
     fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
         InitializeStateCommand::<S>::new(local, suppress_initial_update).apply(self);
     }
 
-    fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
         SetStateTargetCommand::new(local, target).apply(self);
-    }
-
-    fn register_state<S: State>(&mut self) {
-        S::register_state(self);
     }
 }
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::SubApp {
+    fn register_state<S: State>(&mut self) {
+        self.world_mut().register_state::<S>();
+    }
+
     fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
         self.world_mut()
             .init_state::<S>(local, suppress_initial_update);
     }
 
-    fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
-        self.world_mut().next_state(local, target);
-    }
-
-    fn register_state<S: State>(&mut self) {
-        self.world_mut().register_state::<S>();
+    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+        self.world_mut().state_target(local, target);
     }
 }
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::App {
+    fn register_state<S: State>(&mut self) {
+        self.main_mut().register_state::<S>();
+    }
+
     fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
         self.main_mut()
             .init_state::<S>(local, suppress_initial_update);
     }
 
-    fn next_state<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
-        self.main_mut().next_state(local, target);
-    }
-
-    fn register_state<S: State>(&mut self) {
-        self.main_mut().register_state::<S>();
+    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+        self.main_mut().state_target(local, target);
     }
 }

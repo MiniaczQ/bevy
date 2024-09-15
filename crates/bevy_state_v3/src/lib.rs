@@ -117,7 +117,7 @@ mod tests {
             None::<SubState>
         );
 
-        world.next_state(local, Some(ManualState::A));
+        world.state_target(local, Some(ManualState::A));
         world.run_schedule(StateTransition);
         assert_states!(
             world,
@@ -126,7 +126,7 @@ mod tests {
             None::<SubState>
         );
 
-        world.next_state(local, Some(ManualState::B));
+        world.state_target(local, Some(ManualState::B));
         world.run_schedule(StateTransition);
         assert_states!(
             world,
@@ -135,7 +135,7 @@ mod tests {
             Some(SubState::X)
         );
 
-        world.next_state(local, Some(SubState::Y));
+        world.state_target(local, Some(SubState::Y));
         world.run_schedule(StateTransition);
         assert_states!(
             world,
@@ -144,7 +144,7 @@ mod tests {
             Some(SubState::Y)
         );
 
-        world.next_state(local, None::<ManualState>);
+        world.state_target(local, None::<ManualState>);
         world.run_schedule(StateTransition);
         assert_states!(
             world,
@@ -234,8 +234,8 @@ mod tests {
         world.init_state::<ManualState>(None, true);
         world.init_state::<SubState2>(None, true);
         world.init_state::<ComputedState>(None, true);
-        world.next_state(None, Some(ManualState::A));
-        world.next_state(None, Some(ManualState2::C));
+        world.state_target(None, Some(ManualState::A));
+        world.state_target(None, Some(ManualState2::C));
         world.run_schedule(StateTransition);
 
         world.init_resource::<StateTransitionTracker>();
@@ -247,8 +247,8 @@ mod tests {
         world.observe(track::<StateEnter<SubState2>>("s2 en"));
         world.observe(track::<StateExit<ComputedState>>("c1 ex"));
         world.observe(track::<StateEnter<ComputedState>>("c1 en"));
-        world.next_state(None, Some(ManualState::B));
-        world.next_state(None, Some(ManualState2::D));
+        world.state_target(None, Some(ManualState::B));
+        world.state_target(None, Some(ManualState2::D));
         world.run_schedule(StateTransition);
 
         let transitions = &world.resource::<StateTransitionTracker>().0;

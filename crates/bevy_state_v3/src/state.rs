@@ -91,7 +91,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         Self::DependencySet::register_states(world);
 
         match world
-            .query_filtered::<(), With<StateGraphNode<Self>>>()
+            .query_filtered::<(), With<RegisteredState<Self>>>()
             .get_single(world)
         {
             // Already registered, skip.
@@ -109,7 +109,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
             Err(QuerySingleError::NoEntities(_)) => {}
         }
 
-        world.spawn(StateGraphNode::<Self>::default());
+        world.spawn(RegisteredState::<Self>::default());
 
         // Register systems for this state.
         let mut schedules = world.resource_mut::<Schedules>();
@@ -127,6 +127,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         )>,
     ) {
         for (mut state, dependencies) in query.iter_mut() {
+            state.updated = false;
             let is_dependency_set_changed = Self::DependencySet::is_changed(&dependencies);
             let is_target_changed = state.target.is_some();
             if is_dependency_set_changed || is_target_changed {
@@ -315,21 +316,11 @@ all_tuples!(
 #[derive(Component)]
 pub struct GlobalStateMarker;
 
-/// Edge between two states in a hierarchy.
+/// Used to keep track of which states are registered and which aren't.
 #[derive(Component)]
-pub struct StateGraphEdge<Parent: State, Child: State>(PhantomData<(Parent, Child)>);
+pub struct RegisteredState<S: State>(PhantomData<S>);
 
-impl<Parent: State, Child: State> Default for StateGraphEdge<Parent, Child> {
-    fn default() -> Self {
-        Self(PhantomData::default())
-    }
-}
-
-/// Node of a state.
-#[derive(Component)]
-pub struct StateGraphNode<S: State>(PhantomData<S>);
-
-impl<S: State> Default for StateGraphNode<S> {
+impl<S: State> Default for RegisteredState<S> {
     fn default() -> Self {
         Self(Default::default())
     }
