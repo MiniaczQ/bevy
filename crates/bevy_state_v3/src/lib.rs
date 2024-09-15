@@ -9,13 +9,15 @@ mod state;
 mod tests {
     use std::{any::type_name, fmt::Debug};
 
-    use bevy_ecs::{entity::Entity, observer::Trigger, schedule::Schedules, world::World};
+    use bevy_ecs::{
+        entity::Entity, observer::Trigger, schedule::Schedules, system::Commands, world::World,
+    };
 
     use crate::{
         commands::StatesExt,
         data::{StateData, StateUpdateCurrent},
         events::OnStateTransition,
-        state::{State, StateSet, StateTransition},
+        state::{State, StateGraphNode, StateSet, StateTransition},
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -101,6 +103,37 @@ mod tests {
         world.init_state::<ManualState>(local);
         world.init_state::<ComputedState>(local);
         world.init_state::<SubState>(local);
+
+        world
+            .query::<&mut StateGraphNode<ManualState>>()
+            .single_mut(world)
+            .on_exit
+            .push(Box::new(log_on_exit));
+        world
+            .query::<&mut StateGraphNode<ComputedState>>()
+            .single_mut(world)
+            .on_exit
+            .push(Box::new(log_on_exit));
+        world
+            .query::<&mut StateGraphNode<SubState>>()
+            .single_mut(world)
+            .on_exit
+            .push(Box::new(log_on_exit));
+        world
+            .query::<&mut StateGraphNode<ManualState>>()
+            .single_mut(world)
+            .on_enter
+            .push(Box::new(log_on_enter));
+        world
+            .query::<&mut StateGraphNode<ComputedState>>()
+            .single_mut(world)
+            .on_enter
+            .push(Box::new(log_on_enter));
+        world
+            .query::<&mut StateGraphNode<SubState>>()
+            .single_mut(world)
+            .on_enter
+            .push(Box::new(log_on_enter));
 
         assert_states!(
             world,
@@ -205,5 +238,43 @@ mod tests {
     fn log_state<S: State>(world: &mut World) {
         let name = state_name::<S>();
         world.observe(move |_: Trigger<OnStateTransition<S>>| println!("{} - Transition", name));
+    }
+
+    fn log_on_exit<S: State>(
+        local: Option<Entity>,
+        state: &StateData<S>,
+        _commands: &mut Commands,
+    ) {
+        let pre = if let Some(entity) = local {
+            format!("{:?}", entity)
+        } else {
+            "global".to_owned()
+        };
+        println!(
+            "exit {} {} {:?} -> {:?}",
+            pre,
+            state_name::<S>(),
+            state.previous(),
+            state.current()
+        );
+    }
+
+    fn log_on_enter<S: State>(
+        local: Option<Entity>,
+        state: &StateData<S>,
+        _commands: &mut Commands,
+    ) {
+        let pre = if let Some(entity) = local {
+            format!("{:?}", entity)
+        } else {
+            "global".to_owned()
+        };
+        println!(
+            "enter {} {} {:?} -> {:?}",
+            pre,
+            state_name::<S>(),
+            state.previous(),
+            state.current()
+        );
     }
 }

@@ -148,23 +148,10 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
             if !state.updated {
                 continue;
             }
+            let local = (!is_global).then_some(entity);
             for reactor in &node.on_enter {
-                reactor(state, &mut commands);
+                reactor(local, state, &mut commands);
             }
-
-            // TODO: replace with transitions
-            let pre = if is_global {
-                "global".to_owned()
-            } else {
-                format!("{:?}", entity)
-            };
-            println!(
-                "exit {} {} {:?} -> {:?}",
-                pre,
-                type_name::<Self>().split("::").last().unwrap(),
-                state.previous(),
-                state.current()
-            );
         }
     }
 
@@ -178,23 +165,10 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
             if !state.updated {
                 continue;
             }
+            let local = (!is_global).then_some(entity);
             for reactor in &node.on_enter {
-                reactor(state, &mut commands);
+                reactor(local, state, &mut commands);
             }
-
-            // TODO: replace with transitions
-            let pre = if is_global {
-                "global".to_owned()
-            } else {
-                format!("{:?}", entity)
-            };
-            println!(
-                "enter {} {} {:?} -> {:?}",
-                pre,
-                type_name::<Self>().split("::").last().unwrap(),
-                state.previous(),
-                state.current()
-            );
         }
     }
 }
@@ -378,12 +352,12 @@ impl<Parent: State, Child: State> Default for StateGraphEdge<Parent, Child> {
 #[derive(Component)]
 pub struct StateGraphNode<S: State> {
     /// Reactions to state exiting.
-    on_exit: Vec<Box<Reaction<S>>>,
+    pub(crate) on_exit: Vec<Box<Reaction<S>>>,
     /// Reactions to state entering.
-    on_enter: Vec<Box<Reaction<S>>>,
+    pub(crate) on_enter: Vec<Box<Reaction<S>>>,
 }
 
-type Reaction<S> = dyn Fn(&StateData<S>, &mut Commands) + Send + Sync + 'static;
+type Reaction<S> = dyn Fn(Option<Entity>, &StateData<S>, &mut Commands) + Send + Sync + 'static;
 
 impl<S: State> Default for StateGraphNode<S> {
     fn default() -> Self {
