@@ -11,7 +11,8 @@ pub struct StateData<S: State> {
     pub(crate) is_reentrant: bool,
     pub(crate) previous: Option<S>,
     pub(crate) current: Option<S>,
-    pub(crate) next: Option<Option<S>>,
+    pub(crate) target: Option<Option<S>>,
+    pub(crate) updated: bool,
 }
 
 impl<S: State> Default for StateData<S> {
@@ -20,7 +21,9 @@ impl<S: State> Default for StateData<S> {
             is_reentrant: false,
             previous: None,
             current: None,
-            next: None,
+            target: None,
+            // Start with `updated` to trigger validation.
+            updated: true,
         }
     }
 }
@@ -33,7 +36,7 @@ impl<S: State + Send + Sync + 'static> Component for StateData<S> {
         storages: &mut Storages,
         required_components: &mut RequiredComponents,
     ) {
-        <S::Dependencies as StateSet>::register_required_components(
+        <S::DependencySet as StateSet>::register_required_components(
             components,
             storages,
             required_components,
@@ -42,14 +45,7 @@ impl<S: State + Send + Sync + 'static> Component for StateData<S> {
 }
 
 impl<S: State> StateData<S> {
-    pub(crate) fn new(next: Option<S>) -> Self {
-        Self {
-            next: Some(next),
-            ..Default::default()
-        }
-    }
-
-    pub(crate) fn advance(&mut self, next: Option<S>) {
+    pub(crate) fn update(&mut self, next: Option<S>) {
         if next == self.current {
             self.is_reentrant = true;
         } else {
@@ -57,6 +53,7 @@ impl<S: State> StateData<S> {
             self.previous = self.current.take();
             self.current = next;
         }
+        self.updated = true;
     }
 }
 
@@ -73,14 +70,40 @@ impl<S: State> StateData<S> {
         self.previous.as_ref()
     }
 
-    /// Next requested state.
-    /// Note that this value is processed during [`State::update`] as opposed to directly mutating the current value.
-    pub fn next(&self) -> Option<Option<&S>> {
-        self.next.as_ref().map(Option::as_ref)
-    }
-
     /// Returns whether the current state was reentered.
     pub fn is_reentrant(&self) -> bool {
         self.is_reentrant
+    }
+
+    pub fn target_mut(&mut self) -> &mut Option<Option<S>> {
+        &mut self.target
+    }
+}
+
+pub struct StateUpdateCurrent<'a, S: State> {
+    pub current: Option<&'a S>,
+    pub target: Option<Option<S>>,
+}
+
+impl<'a, S: State> From<&'a StateData<S>> for StateUpdateCurrent<'a, S> {
+    fn from(value: &'a StateData<S>) -> Self {
+        StateUpdateCurrent {
+            current: value.current.as_ref(),
+            target: value.target.clone(),
+        }
+    }
+}
+
+pub struct StateUpdateDependency<'a, S: State> {
+    pub current: Option<&'a S>,
+    pub updated: bool,
+}
+
+impl<'a, S: State> From<&'a StateData<S>> for StateUpdateDependency<'a, S> {
+    fn from(value: &'a StateData<S>) -> Self {
+        StateUpdateDependency {
+            current: value.current.as_ref(),
+            updated: value.updated,
+        }
     }
 }

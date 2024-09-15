@@ -7,54 +7,59 @@ mod state;
 
 #[cfg(test)]
 mod tests {
-    use bevy_ecs::{query::WorldQuery, schedule::Schedules, world::World};
+    use std::{any::type_name, fmt::Debug};
+
+    use bevy_ecs::{entity::Entity, observer::Trigger, schedule::Schedules, world::World};
 
     use crate::{
         commands::StatesExt,
-        data::StateData,
+        data::{StateData, StateUpdateCurrent},
+        events::OnStateTransition,
         state::{State, StateSet, StateTransition},
     };
 
-    #[derive(Debug, Default, PartialEq)]
+    #[derive(Clone, Debug, PartialEq)]
     enum ManualState {
-        #[default]
         A,
         B,
-        C,
     }
 
     impl State for ManualState {
-        type Dependencies = ();
+        type DependencySet = ();
 
-        fn update(next: Option<Option<Self>>, _: Self::Dependencies) -> Option<Option<Self>> {
+        fn update<'a>(
+            state: StateUpdateCurrent<Self>,
+            _dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+        ) -> Option<Option<Self>> {
             // Pure manual control.
             // We ignore the update call from dependencies, because there are none.
-            next
+            state.target
         }
     }
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Clone, Debug, PartialEq)]
     struct ComputedState;
 
     impl State for ComputedState {
-        type Dependencies = ManualState;
+        type DependencySet = ManualState;
 
-        fn update(
-            next: Option<Option<Self>>,
-            manual: <<<Self as State>::Dependencies as StateSet>::Data as WorldQuery>::Item<'_>,
+        fn update<'a>(
+            state: StateUpdateCurrent<Self>,
+            dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
         ) -> Option<Option<Self>> {
-            match (manual.current(), next) {
+            let manual = dependencies;
+            match (manual.current, state.target) {
                 // If next was requested, ignore it.
                 (_, Some(_)) => None,
                 // If parent is valid, enable the state.
-                (Some(ManualState::B), _) => Some(Some(ComputedState)),
+                (Some(ManualState::A), _) => Some(Some(ComputedState)),
                 // If parent is invalid, disable the state.
                 _ => Some(None),
             }
         }
     }
 
-    #[derive(Debug, Default, PartialEq)]
+    #[derive(Clone, Debug, Default, PartialEq)]
     enum SubState {
         #[default]
         X,
@@ -62,121 +67,143 @@ mod tests {
     }
 
     impl State for SubState {
-        type Dependencies = ManualState;
+        type DependencySet = ManualState;
 
-        fn update(
-            next: Option<Option<Self>>,
-            manual: <<<Self as State>::Dependencies as StateSet>::Data as WorldQuery>::Item<'_>,
+        fn update<'a>(
+            state: StateUpdateCurrent<Self>,
+            dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
         ) -> Option<Option<Self>> {
-            match (manual.current(), next) {
+            let manual = dependencies;
+            match (manual.current, state.target) {
                 // If parent state is valid, respect requested enabled next state.
-                (Some(ManualState::C), Some(Some(next))) => Some(Some(next)),
+                (Some(ManualState::B), Some(Some(next))) => Some(Some(next)),
                 // If parent state is valid and requested next state disables the state, ignore it.
-                (Some(ManualState::C), Some(None)) => None,
+                (Some(ManualState::B), Some(None)) => None,
                 // If parent state is valid and there was no next request, enable the state with default value.
-                (Some(ManualState::C), None) => Some(Some(SubState::default())),
+                (Some(ManualState::B), None) => Some(Some(SubState::default())),
                 // If parent state is invalid, disable the state.
                 _ => Some(None),
             }
         }
     }
 
-    fn assert_only_state<S: State>(world: &mut World, _target: Option<S>) {
-        let state = world.query::<&StateData<S>>().single(world);
-        assert!(matches!(state.current(), _target));
-        assert!(matches!(state.next(), None));
+    macro_rules! assert_states {
+        ($world:expr, $($state:expr),+) => {
+            $(assert_eq!($world.query::<&StateData<_>>().single($world).current, $state));+
+        };
+    }
+
+    fn test_all_states(world: &mut World, local: Option<Entity>) {
+        world.init_resource::<Schedules>();
+        world.register_state::<ManualState>();
+        world.register_state::<ComputedState>();
+        world.register_state::<SubState>();
+        world.init_state::<ManualState>(local);
+        world.init_state::<ComputedState>(local);
+        world.init_state::<SubState>(local);
+
+        assert_states!(
+            world,
+            None::<ManualState>,
+            None::<ComputedState>,
+            None::<SubState>
+        );
+
+        world.next_state(local, Some(ManualState::A));
+        world.run_schedule(StateTransition);
+
+        assert_states!(
+            world,
+            Some(ManualState::A),
+            Some(ComputedState),
+            None::<SubState>
+        );
+
+        world.next_state(local, Some(ManualState::B));
+        world.run_schedule(StateTransition);
+
+        assert_states!(
+            world,
+            Some(ManualState::B),
+            None::<ComputedState>,
+            Some(SubState::X)
+        );
+
+        world.next_state(local, Some(SubState::Y));
+        world.run_schedule(StateTransition);
+
+        assert_states!(
+            world,
+            Some(ManualState::B),
+            None::<ComputedState>,
+            Some(SubState::Y)
+        );
+
+        world.next_state(local, None::<ManualState>);
+        world.run_schedule(StateTransition);
+
+        assert_states!(
+            world,
+            None::<ManualState>,
+            None::<ComputedState>,
+            None::<SubState>
+        );
     }
 
     #[test]
     fn global_state() {
         let mut world = World::new();
-        world.init_resource::<Schedules>();
-        world.register_state::<ManualState>();
-        world.register_state::<ComputedState>();
-        world.register_state::<SubState>();
-
-        world.insert_state(None, None::<ManualState>, false);
-        world.insert_state(None, None::<ComputedState>, false);
-        world.insert_state(None, None::<SubState>, false);
-        world.run_schedule(StateTransition);
-
-        assert_only_state(&mut world, None::<ManualState>);
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, None::<SubState>);
-
-        world.next_state(None, Some(ManualState::B));
-        world.run_schedule(StateTransition);
-
-        assert_only_state(&mut world, Some(ManualState::B));
-        assert_only_state(&mut world, Some(ComputedState));
-        assert_only_state(&mut world, None::<SubState>);
-
-        world.next_state(None, Some(ManualState::C));
-        world.run_schedule(StateTransition);
-
-        assert_only_state(&mut world, Some(ManualState::C));
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, Some(SubState::X));
-
-        world.next_state(None, Some(SubState::Y));
-        world.run_schedule(StateTransition);
-
-        assert_only_state(&mut world, Some(ManualState::C));
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, Some(SubState::Y));
-
-        world.next_state(None, None::<ManualState>);
-        world.run_schedule(StateTransition);
-
-        assert_only_state(&mut world, None::<ManualState>);
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, None::<SubState>);
+        let local = None;
+        test_all_states(&mut world, local);
     }
 
     #[test]
     fn local_state() {
         let mut world = World::new();
+        let local = Some(world.spawn_empty().id());
+        test_all_states(&mut world, local);
+    }
+
+    #[test]
+    fn transition_order() {
+        let mut world = World::new();
         world.init_resource::<Schedules>();
         world.register_state::<ManualState>();
         world.register_state::<ComputedState>();
         world.register_state::<SubState>();
+        world.init_state::<ManualState>(None);
+        world.init_state::<ComputedState>(None);
+        world.init_state::<SubState>(None);
 
-        let entity = world.spawn_empty().id();
-        world.insert_state(Some(entity), None::<ManualState>, false);
-        world.insert_state(Some(entity), None::<ComputedState>, false);
-        world.insert_state(Some(entity), None::<SubState>, false);
+        world.next_state(None, Some(ManualState::A));
         world.run_schedule(StateTransition);
 
-        assert_only_state(&mut world, None::<ManualState>);
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, None::<SubState>);
-
-        world.next_state(Some(entity), Some(ManualState::B));
+        world.next_state(None, Some(ManualState::B));
         world.run_schedule(StateTransition);
 
-        assert_only_state(&mut world, Some(ManualState::B));
-        assert_only_state(&mut world, Some(ComputedState));
-        assert_only_state(&mut world, None::<SubState>);
-
-        world.next_state(Some(entity), Some(ManualState::C));
+        world.next_state(None, Some(ManualState::A));
         world.run_schedule(StateTransition);
 
-        assert_only_state(&mut world, Some(ManualState::C));
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, Some(SubState::X));
+        // TODO: still working on transitions
+    }
 
-        world.next_state(Some(entity), Some(SubState::Y));
-        world.run_schedule(StateTransition);
+    // Debug stuff
 
-        assert_only_state(&mut world, Some(ManualState::C));
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, Some(SubState::Y));
+    #[allow(unused_macros)]
+    macro_rules! print_states {
+        ($world:expr, $($state:ty),+) => {
+            $(println!("{:?}", $world.query::<&StateData<$state>>().single($world)));+
+        };
+    }
 
-        world.next_state(Some(entity), None::<ManualState>);
-        world.run_schedule(StateTransition);
+    #[allow(dead_code)]
+    fn state_name<S: State>() -> &'static str {
+        type_name::<S>().split("::").last().unwrap()
+    }
 
-        assert_only_state(&mut world, None::<ManualState>);
-        assert_only_state(&mut world, None::<ComputedState>);
-        assert_only_state(&mut world, None::<SubState>);
+    #[allow(dead_code)]
+    fn log_state<S: State>(world: &mut World) {
+        let name = state_name::<S>();
+        world.observe(move |_: Trigger<OnStateTransition<S>>| println!("{} - Transition", name));
     }
 }
