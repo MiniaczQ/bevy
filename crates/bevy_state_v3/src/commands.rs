@@ -119,13 +119,15 @@ impl<S: State<Target = StateUpdate<S>>> Command for SetStateTargetCommand<S> {
 }
 
 #[doc(hidden)]
-/// For [`Commands`] this will be a deferred operation, but for everything else the effect will be immediate.
+/// All of the operations can happen immediatelly (with [`World`], [`SubApp`](bevy_app::SubApp), [`App`](bevy_app::App)) or in a deferred manner (with [`Commands`]).
 pub trait StatesExt {
-    /// Registers machinery for state.
+    /// Registers machinery for this state as well as all dependencies.
     fn register_state<S: State>(&mut self);
 
-    /// Initializes state.
-    /// If `local` is `None`, this will work on the global state.
+    /// Adds the state to the provided `local` entity or otherwise the global state.
+    /// If initial update is suppresed, no initial transitions will be generated.
+    /// The state added this way is always disabled and has to be enabled through [`next_state`] method.
+    /// This also adds all dependencies through required components.
     fn init_state<S: State>(
         &mut self,
         local: Option<Entity>,
@@ -133,9 +135,11 @@ pub trait StatesExt {
         suppress_initial_update: bool,
     );
 
-    /// Set the next value of the state.
-    /// This value will be used to update the state in the [`StateTransition`](crate::state::StateTransition) schedule.
-    /// If `local` is `None`, this will work on the global state.
+    /// Sets the [`State::Target`] value in [`StateData`],
+    /// which will result in an [`State::update`] call during [`StateTransition`](crate::state::StateTransition) schedule.
+    /// Much like [`StatesExt::init_state`] you need to provide a local entity or nothing, for global state.
+    ///
+    /// This only works with the [`StateUpdate`] target.
     fn state_target<S: State<Target = StateUpdate<S>>>(
         &mut self,
         local: Option<Entity>,

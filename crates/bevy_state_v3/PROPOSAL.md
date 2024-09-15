@@ -119,35 +119,12 @@ The return value of this function decides whether and how we update this state.
 ```rs
 trait State {
     /// How next value of state is decided.
-    /// Returned value:
-    /// - `None` - no update,
-    /// - `Some(None)` - disable,
-    /// - `Some(Some(s))` - enable with value `s`.
     fn update(
         // Current state.
-        state: StateUpdateCurrent<Self>,
+        state: &mut StateData<Self>,
         // Dependencies.
         dependencies: (StateUpdateDependency<D1>, StateUpdateDependency<D2>, ...),
-    ) -> Option<Option<Self>>;
-}
-
-/// Reduced current state data.
-struct StateUpdateCurrent<S: State> {
-    /// Current value of the state.
-    current: Option<&S>,
-    /// Hint from the user, the implementation of [`State::update`] decides what this actually does.
-    /// For manual state this has full control.
-    /// For sub state this is ignored if parent state isn't correct.
-    /// For computed state this is fully ignored.
-    target: Option<Option<S>>,
-}
-
-/// Reduced dependency data.
-struct StateUpdateDependency<S: State> {
-    /// Current value of the dependency.
-    current: Option<&S>,
-    /// Whether the dependency changed this frame.
-    updated: bool,
+    ) -> StateUpdate<Self>;
 }
 ```
 

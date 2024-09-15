@@ -16,7 +16,7 @@ mod tests {
         event::Event,
         observer::Trigger,
         schedule::Schedules,
-        system::{Commands, ResMut, Resource},
+        system::{ResMut, Resource},
         world::World,
     };
 

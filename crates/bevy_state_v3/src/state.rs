@@ -352,8 +352,15 @@ impl<S: State> StateTarget for StateUpdate<S> {
     }
 }
 
+/// Variable target backend for states.
+/// Different backends can allow for different features:
+/// - singular requests,
+/// - mutable state that tracks changes,
+/// - stack of states.
 pub trait StateTarget: Default + Send + Sync + 'static {
+    /// Returns whether state should be updated.
     fn is_changed(&self) -> bool;
 
+    /// Resets the target, usually by disabling the [`Self::is_changed`] until another request.
     fn reset(&mut self);
 }
