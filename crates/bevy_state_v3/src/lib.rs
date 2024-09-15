@@ -24,7 +24,7 @@ mod tests {
         commands::StatesExt,
         data::{StateData, StateUpdateCurrent},
         events::{StateEnter, StateExit},
-        state::{State, StateSet, StateTransition},
+        state::{State, StateSet, StateTransition, StateUpdate},
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -39,7 +39,7 @@ mod tests {
         fn update<'a>(
             state: StateUpdateCurrent<Self>,
             _dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-        ) -> Option<Option<Self>> {
+        ) -> StateUpdate<Self> {
             // Pure manual control.
             // We ignore the update call from dependencies, because there are none.
             state.target
@@ -55,15 +55,15 @@ mod tests {
         fn update<'a>(
             state: StateUpdateCurrent<Self>,
             dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-        ) -> Option<Option<Self>> {
+        ) -> StateUpdate<Self> {
             let manual = dependencies;
             match (manual.current, state.target) {
                 // If next was requested, ignore it.
-                (_, Some(_)) => None,
+                (_, StateUpdate::Enable(_)) => StateUpdate::Nothing,
                 // If parent is valid, enable the state.
-                (Some(ManualState::A), _) => Some(Some(ComputedState)),
+                (Some(ManualState::A), _) => StateUpdate::Enable(ComputedState),
                 // If parent is invalid, disable the state.
-                _ => Some(None),
+                _ => StateUpdate::Disable,
             }
         }
     }
@@ -81,17 +81,19 @@ mod tests {
         fn update<'a>(
             state: StateUpdateCurrent<Self>,
             dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-        ) -> Option<Option<Self>> {
+        ) -> StateUpdate<Self> {
             let manual = dependencies;
             match (manual.current, state.target) {
                 // If parent state is valid, respect requested enabled next state.
-                (Some(ManualState::B), Some(Some(next))) => Some(Some(next)),
+                (Some(ManualState::B), StateUpdate::Enable(next)) => StateUpdate::Enable(next),
                 // If parent state is valid and requested next state disables the state, ignore it.
-                (Some(ManualState::B), Some(None)) => None,
+                (Some(ManualState::B), StateUpdate::Disable) => StateUpdate::Nothing,
                 // If parent state is valid and there was no next request, enable the state with default value.
-                (Some(ManualState::B), None) => Some(Some(SubState::default())),
+                (Some(ManualState::B), StateUpdate::Nothing) => {
+                    StateUpdate::Enable(SubState::default())
+                }
                 // If parent state is invalid, disable the state.
-                _ => Some(None),
+                _ => StateUpdate::Disable,
             }
         }
     }
@@ -196,15 +198,19 @@ mod tests {
         fn update<'a>(
             state: StateUpdateCurrent<Self>,
             dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-        ) -> Option<Option<Self>> {
+        ) -> StateUpdate<Self> {
             let (manual1, manual2) = dependencies;
             match (manual1.current, manual2.current, state.target) {
-                (Some(ManualState::B), Some(ManualState2::D), Some(Some(next))) => Some(Some(next)),
-                (Some(ManualState::B), Some(ManualState2::D), Some(None)) => None,
-                (Some(ManualState::B), Some(ManualState2::D), None) => {
-                    Some(Some(SubState2::default()))
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Enable(next)) => {
+                    StateUpdate::Enable(next)
                 }
-                _ => Some(None),
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Disable) => {
+                    StateUpdate::Nothing
+                }
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Nothing) => {
+                    StateUpdate::Enable(SubState2::default())
+                }
+                _ => StateUpdate::Disable,
             }
         }
     }
@@ -215,7 +221,7 @@ mod tests {
         fn update<'a>(
             state: StateUpdateCurrent<Self>,
             _dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-        ) -> Option<Option<Self>> {
+        ) -> StateUpdate<Self> {
             // Pure manual control.
             // We ignore the update call from dependencies, because there are none.
             state.target

@@ -3,7 +3,7 @@ use bevy_ecs::{
     storage::Storages,
 };
 
-use crate::state::{State, StateSet};
+use crate::state::{State, StateSet, StateUpdate};
 
 /// Data of the state.
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub struct StateData<S: State> {
     pub(crate) is_reentrant: bool,
     pub(crate) previous: Option<S>,
     pub(crate) current: Option<S>,
-    pub(crate) target: Option<Option<S>>,
+    pub(crate) target: StateUpdate<S>,
     pub(crate) updated: bool,
 }
 
@@ -21,9 +21,8 @@ impl<S: State> Default for StateData<S> {
             is_reentrant: false,
             previous: None,
             current: None,
-            target: None,
-            // Start with `updated` to trigger validation.
-            updated: true,
+            target: StateUpdate::Disable,
+            updated: false,
         }
     }
 }
@@ -82,14 +81,14 @@ impl<S: State> StateData<S> {
         self.is_reentrant
     }
 
-    pub fn target_mut(&mut self) -> &mut Option<Option<S>> {
+    pub fn target_mut(&mut self) -> &mut StateUpdate<S> {
         &mut self.target
     }
 }
 
 pub struct StateUpdateCurrent<'a, S: State> {
     pub current: Option<&'a S>,
-    pub target: Option<Option<S>>,
+    pub target: StateUpdate<S>,
 }
 
 impl<'a, S: State> From<&'a StateData<S>> for StateUpdateCurrent<'a, S> {

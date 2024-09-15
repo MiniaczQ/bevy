@@ -10,7 +10,7 @@ use bevy_utils::tracing::warn;
 
 use crate::{
     data::StateData,
-    state::{GlobalStateMarker, State},
+    state::{GlobalStateMarker, State, StateUpdate},
 };
 
 struct InitializeStateCommand<S: State> {
@@ -110,7 +110,10 @@ impl<S: State> Command for SetStateTargetCommand<S> {
             );
             return;
         };
-        state.target = Some(self.target);
+        state.target = match self.target {
+            Some(s) => StateUpdate::Enable(s),
+            None => StateUpdate::Disable,
+        };
     }
 }
 

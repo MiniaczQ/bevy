@@ -84,7 +84,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     fn update<'a>(
         state: StateUpdateCurrent<Self>,
         dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
-    ) -> Option<Option<Self>>;
+    ) -> StateUpdate<Self>;
 
     /// Registers this state in the world together with all dependencies.
     fn register_state(world: &mut World) {
@@ -129,13 +129,14 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         for (mut state, dependencies) in query.iter_mut() {
             state.updated = false;
             let is_dependency_set_changed = Self::DependencySet::is_changed(&dependencies);
-            let is_target_changed = state.target.is_some();
+            let is_target_changed = state.target.is_something();
             if is_dependency_set_changed || is_target_changed {
-                if let Some(next) = Self::update(
+                let result = Self::update(
                     (&*state).into(),
                     Self::DependencySet::as_state_update_dependency(dependencies),
-                ) {
-                    state.target.take();
+                );
+                if let Some(next) = result.as_options() {
+                    state.target.reset();
                     state.update(next);
                 }
             }
@@ -323,5 +324,35 @@ pub struct RegisteredState<S: State>(PhantomData<S>);
 impl<S: State> Default for RegisteredState<S> {
     fn default() -> Self {
         Self(Default::default())
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum StateUpdate<S: State> {
+    #[default]
+    Nothing,
+    Disable,
+    Enable(S),
+}
+
+impl<S: State> StateUpdate<S> {
+    pub fn is_something(&self) -> bool {
+        if let Self::Nothing = self {
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn as_options(self) -> Option<Option<S>> {
+        match self {
+            StateUpdate::Nothing => None,
+            StateUpdate::Disable => Some(None),
+            StateUpdate::Enable(s) => Some(Some(s)),
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = StateUpdate::Nothing;
     }
 }
