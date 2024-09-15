@@ -3,15 +3,24 @@ use bevy_ecs::{
     storage::Storages,
 };
 
-use crate::state::{State, StateSet, StateUpdate};
+use crate::state::{State, StateSet};
 
-/// Data of the state.
+/// State data component.
 #[derive(Debug)]
 pub struct StateData<S: State> {
+    /// Whether this state was reentered.
+    /// Use in tandem with [`Self::previous`].
     pub(crate) is_reentrant: bool,
+    /// Last different state value.
+    /// This is not overwritten during reentries.
     pub(crate) previous: Option<S>,
+    /// Current value of the state.
     pub(crate) current: Option<S>,
+    /// Proposed state value to be considered during next [`StateTransition`](crate::state::StateTransition).
+    /// How this value actually impacts the state depends on the [`State::update`] function.
     pub(crate) target: S::Target,
+    /// Whether this state was updated in the last [`StateTransition`] schedule.
+    /// For a standard use case, this happens once per frame.
     pub(crate) is_updated: bool,
 }
 
@@ -75,6 +84,15 @@ impl<S: State> StateData<S> {
     /// instead the [`Self::is_reentrant()`] flag will be raised.
     pub fn previous(&self) -> Option<&S> {
         self.previous.as_ref()
+    }
+
+    /// Returns the previous state with reentries included.
+    pub fn reentrant_previous(&self) -> Option<&S> {
+        if self.is_reentrant {
+            self.current()
+        } else {
+            self.previous()
+        }
     }
 
     /// Returns whether the current state was reentered.

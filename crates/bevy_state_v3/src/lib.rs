@@ -176,9 +176,9 @@ mod tests {
     #[derive(Default, Resource)]
     struct StateTransitionTracker(Vec<&'static str>);
 
-    fn track<E: Event>(s: &'static str) -> impl Fn(Trigger<E>, ResMut<StateTransitionTracker>) {
+    fn track<E: Event>() -> impl Fn(Trigger<E>, ResMut<StateTransitionTracker>) {
         move |_: Trigger<E>, mut reg: ResMut<StateTransitionTracker>| {
-            reg.0.push(s);
+            reg.0.push(type_name::<E>());
         }
     }
 
@@ -254,27 +254,27 @@ mod tests {
         world.run_schedule(StateTransition);
 
         world.init_resource::<StateTransitionTracker>();
-        world.observe(track::<StateExit<ManualState>>("m1 ex"));
-        world.observe(track::<StateEnter<ManualState>>("m1 en"));
-        world.observe(track::<StateExit<ManualState2>>("m2 ex"));
-        world.observe(track::<StateEnter<ManualState2>>("m2 en"));
-        world.observe(track::<StateExit<SubState2>>("s2 ex"));
-        world.observe(track::<StateEnter<SubState2>>("s2 en"));
-        world.observe(track::<StateExit<ComputedState>>("c1 ex"));
-        world.observe(track::<StateEnter<ComputedState>>("c1 en"));
+        world.observe(track::<StateExit<ManualState>>());
+        world.observe(track::<StateEnter<ManualState>>());
+        world.observe(track::<StateExit<ManualState2>>());
+        world.observe(track::<StateEnter<ManualState2>>());
+        world.observe(track::<StateExit<SubState2>>());
+        world.observe(track::<StateEnter<SubState2>>());
+        world.observe(track::<StateExit<ComputedState>>());
+        world.observe(track::<StateEnter<ComputedState>>());
         world.state_target(None, Some(ManualState::B));
         world.state_target(None, Some(ManualState2::D));
         world.run_schedule(StateTransition);
 
         let transitions = &world.resource::<StateTransitionTracker>().0;
-        assert!(transitions[0..=1].contains(&"c1 ex"));
-        assert!(transitions[0..=1].contains(&"s2 ex"));
-        assert!(transitions[2..=3].contains(&"m1 ex"));
-        assert!(transitions[2..=3].contains(&"m2 ex"));
-        assert!(transitions[4..=5].contains(&"m1 en"));
-        assert!(transitions[4..=5].contains(&"m2 en"));
-        assert!(transitions[6..=7].contains(&"c1 en"));
-        assert!(transitions[6..=7].contains(&"s2 en"));
+        assert!(transitions[0..=1].contains(&type_name::<StateExit<SubState2>>()));
+        assert!(transitions[0..=1].contains(&type_name::<StateExit<ComputedState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<StateExit<ManualState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<StateExit<ManualState2>>()));
+        assert!(transitions[4..=5].contains(&type_name::<StateEnter<ManualState>>()));
+        assert!(transitions[4..=5].contains(&type_name::<StateEnter<ManualState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<StateEnter<SubState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<StateEnter<ComputedState>>()));
     }
 
     // Debug stuff
@@ -284,48 +284,5 @@ mod tests {
         ($world:expr, $($state:ty),+) => {
             $(println!("{:?}", $world.query::<&StateData<$state>>().single($world)));+
         };
-    }
-
-    #[allow(dead_code)]
-    fn state_name<S: State>() -> &'static str {
-        type_name::<S>().split("::").last().unwrap()
-    }
-
-    fn log_on_exit<S: State>(
-        local: Option<Entity>,
-        state: &StateData<S>,
-        _commands: &mut Commands,
-    ) {
-        let pre = if let Some(entity) = local {
-            format!("{:?}", entity)
-        } else {
-            "global".to_owned()
-        };
-        println!(
-            "exit {} {} {:?} -> {:?}",
-            pre,
-            state_name::<S>(),
-            state.previous(),
-            state.current()
-        );
-    }
-
-    fn log_on_enter<S: State>(
-        local: Option<Entity>,
-        state: &StateData<S>,
-        _commands: &mut Commands,
-    ) {
-        let pre = if let Some(entity) = local {
-            format!("{:?}", entity)
-        } else {
-            "global".to_owned()
-        };
-        println!(
-            "enter {} {} {:?} -> {:?}",
-            pre,
-            state_name::<S>(),
-            state.previous(),
-            state.current()
-        );
     }
 }
