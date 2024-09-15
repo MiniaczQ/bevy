@@ -22,9 +22,9 @@ mod tests {
 
     use crate::{
         commands::StatesExt,
-        data::{StateData, StateUpdateCurrent},
+        data::StateData,
         events::{StateEnter, StateExit},
-        state::{State, StateSet, StateTransition, StateUpdate},
+        state::{State, StateDependencies, StateTransition, StateUpdate},
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -37,12 +37,12 @@ mod tests {
         type DependencySet = ();
 
         fn update<'a>(
-            state: StateUpdateCurrent<Self>,
-            _dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+            state: &mut StateData<Self>,
+            _dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             // Pure manual control.
             // We ignore the update call from dependencies, because there are none.
-            state.target
+            state.target_mut().take()
         }
     }
 
@@ -53,11 +53,11 @@ mod tests {
         type DependencySet = ManualState;
 
         fn update<'a>(
-            state: StateUpdateCurrent<Self>,
-            dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+            state: &mut StateData<Self>,
+            dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             let manual = dependencies;
-            match (manual.current, state.target) {
+            match (manual.current(), state.target()) {
                 // If next was requested, ignore it.
                 (_, StateUpdate::Enable(_)) => StateUpdate::Nothing,
                 // If parent is valid, enable the state.
@@ -79,11 +79,11 @@ mod tests {
         type DependencySet = ManualState;
 
         fn update<'a>(
-            state: StateUpdateCurrent<Self>,
-            dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+            state: &mut StateData<Self>,
+            dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             let manual = dependencies;
-            match (manual.current, state.target) {
+            match (manual.current(), state.target_mut().take()) {
                 // If parent state is valid, respect requested enabled next state.
                 (Some(ManualState::B), StateUpdate::Enable(next)) => StateUpdate::Enable(next),
                 // If parent state is valid and requested next state disables the state, ignore it.
@@ -196,11 +196,15 @@ mod tests {
         type DependencySet = (ManualState, ManualState2);
 
         fn update<'a>(
-            state: StateUpdateCurrent<Self>,
-            dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+            state: &mut StateData<Self>,
+            dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             let (manual1, manual2) = dependencies;
-            match (manual1.current, manual2.current, state.target) {
+            match (
+                manual1.current(),
+                manual2.current(),
+                state.target_mut().take(),
+            ) {
                 (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Enable(next)) => {
                     StateUpdate::Enable(next)
                 }
@@ -219,12 +223,12 @@ mod tests {
         type DependencySet = ();
 
         fn update<'a>(
-            state: StateUpdateCurrent<Self>,
-            _dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+            state: &mut StateData<Self>,
+            _dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             // Pure manual control.
             // We ignore the update call from dependencies, because there are none.
-            state.target
+            state.target_mut().take()
         }
     }
 

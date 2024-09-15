@@ -12,7 +12,7 @@ pub struct StateData<S: State> {
     pub(crate) previous: Option<S>,
     pub(crate) current: Option<S>,
     pub(crate) target: StateUpdate<S>,
-    pub(crate) updated: bool,
+    pub(crate) is_updated: bool,
 }
 
 impl<S: State> Default for StateData<S> {
@@ -22,7 +22,7 @@ impl<S: State> Default for StateData<S> {
             previous: None,
             current: None,
             target: StateUpdate::Disable,
-            updated: false,
+            is_updated: false,
         }
     }
 }
@@ -46,7 +46,7 @@ impl<S: State> Component for StateData<S> {
 impl<S: State> StateData<S> {
     pub(crate) fn new(suppress_initial_update: bool) -> Self {
         Self {
-            updated: !suppress_initial_update,
+            is_updated: !suppress_initial_update,
             ..Default::default()
         }
     }
@@ -59,7 +59,7 @@ impl<S: State> StateData<S> {
             self.previous = self.current.take();
             self.current = next;
         }
-        self.updated = true;
+        self.is_updated = true;
     }
 }
 
@@ -81,35 +81,18 @@ impl<S: State> StateData<S> {
         self.is_reentrant
     }
 
+    /// Returns whether the current state was updated last state transition.
+    pub fn is_updated(&self) -> bool {
+        self.is_updated
+    }
+
+    /// Reference to the target.
+    pub fn target(&self) -> StateUpdate<&S> {
+        self.target.as_ref()
+    }
+
+    /// Mutable reference to the target.
     pub fn target_mut(&mut self) -> &mut StateUpdate<S> {
         &mut self.target
-    }
-}
-
-pub struct StateUpdateCurrent<'a, S: State> {
-    pub current: Option<&'a S>,
-    pub target: StateUpdate<S>,
-}
-
-impl<'a, S: State> From<&'a StateData<S>> for StateUpdateCurrent<'a, S> {
-    fn from(value: &'a StateData<S>) -> Self {
-        StateUpdateCurrent {
-            current: value.current.as_ref(),
-            target: value.target.clone(),
-        }
-    }
-}
-
-pub struct StateUpdateDependency<'a, S: State> {
-    pub current: Option<&'a S>,
-    pub updated: bool,
-}
-
-impl<'a, S: State> From<&'a StateData<S>> for StateUpdateDependency<'a, S> {
-    fn from(value: &'a StateData<S>) -> Self {
-        StateUpdateDependency {
-            current: value.current.as_ref(),
-            updated: value.updated,
-        }
     }
 }

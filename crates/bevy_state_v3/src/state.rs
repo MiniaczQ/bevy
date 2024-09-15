@@ -12,7 +12,7 @@ use bevy_ecs::{
 use bevy_utils::{all_tuples, tracing::warn};
 
 use crate::{
-    data::{StateData, StateUpdateCurrent, StateUpdateDependency},
+    data::StateData,
     events::{StateEnter, StateExit},
 };
 
@@ -71,6 +71,9 @@ impl StateSystemSet {
     }
 }
 
+pub type StateDependencies<'a, S> =
+    <<<S as State>::DependencySet as StateSet>::Query as WorldQuery>::Item<'a>;
+
 /// Trait for types that act as a state.
 pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     /// Parent states which this state depends on.
@@ -81,14 +84,14 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
 
     /// Called when a [`StateData::next`] value is set or any of the [`Self::Dependencies`] change.
     /// If the returned value is [`Some`] it's used to update the [`StateData<Self>`].
-    fn update<'a>(
-        state: StateUpdateCurrent<Self>,
-        dependencies: <<Self as State>::DependencySet as StateSet>::UpdateDependencies<'a>,
+    fn update(
+        state: &mut StateData<Self>,
+        dependencies: StateDependencies<'_, Self>,
     ) -> StateUpdate<Self>;
 
     /// Registers this state in the world together with all dependencies.
     fn register_state(world: &mut World) {
-        Self::DependencySet::register_states(world);
+        Self::DependencySet::register_required_states(world);
 
         match world
             .query_filtered::<(), With<RegisteredState<Self>>>()
@@ -127,16 +130,13 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         )>,
     ) {
         for (mut state, dependencies) in query.iter_mut() {
-            state.updated = false;
+            state.is_updated = false;
             let is_dependency_set_changed = Self::DependencySet::is_changed(&dependencies);
             let is_target_changed = state.target.is_something();
             if is_dependency_set_changed || is_target_changed {
-                let result = Self::update(
-                    (&*state).into(),
-                    Self::DependencySet::as_state_update_dependency(dependencies),
-                );
+                let result = Self::update(&mut state, dependencies);
                 if let Some(next) = result.as_options() {
-                    state.target.reset();
+                    state.target.take();
                     state.update(next);
                 }
             }
@@ -148,7 +148,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
     ) {
         for (entity, state, is_global) in query.iter() {
-            if !state.updated {
+            if !state.is_updated {
                 continue;
             }
             let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
@@ -161,7 +161,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         states: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
     ) {
         for (entity, state, is_global) in states.iter() {
-            if !state.updated {
+            if !state.is_updated {
                 continue;
             }
             let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
@@ -174,7 +174,6 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
 pub trait StateSet {
     /// Parameters provided to [`State::on_update`].
     type Query: ReadOnlyQueryData;
-    type UpdateDependencies<'a>;
 
     const HIGHEST_ORDER: u32;
 
@@ -186,19 +185,14 @@ pub trait StateSet {
     );
 
     /// Registers all required states.
-    fn register_states(world: &mut World);
+    fn register_required_states(world: &mut World);
 
     /// Check dependencies for changes.
     fn is_changed(set: &<Self::Query as WorldQuery>::Item<'_>) -> bool;
-
-    fn as_state_update_dependency<'a>(
-        set: <Self::Query as WorldQuery>::Item<'a>,
-    ) -> Self::UpdateDependencies<'a>;
 }
 
 impl StateSet for () {
     type Query = ();
-    type UpdateDependencies<'a> = ();
 
     const HIGHEST_ORDER: u32 = 0;
 
@@ -209,21 +203,15 @@ impl StateSet for () {
     ) {
     }
 
-    fn register_states(_world: &mut World) {}
+    fn register_required_states(_world: &mut World) {}
 
     fn is_changed(_set: &<Self::Query as WorldQuery>::Item<'_>) -> bool {
         false
-    }
-
-    fn as_state_update_dependency<'a>(
-        _set: <Self::Query as WorldQuery>::Item<'a>,
-    ) -> Self::UpdateDependencies<'a> {
     }
 }
 
 impl<S1: State> StateSet for S1 {
     type Query = &'static StateData<S1>;
-    type UpdateDependencies<'a> = StateUpdateDependency<'a, S1>;
 
     const HIGHEST_ORDER: u32 = S1::ORDER;
 
@@ -235,18 +223,12 @@ impl<S1: State> StateSet for S1 {
         required_components.register(components, storages, StateData::<S1>::default);
     }
 
-    fn register_states(world: &mut World) {
+    fn register_required_states(world: &mut World) {
         S1::register_state(world);
     }
 
     fn is_changed(s1: &<Self::Query as WorldQuery>::Item<'_>) -> bool {
-        s1.updated
-    }
-
-    fn as_state_update_dependency<'a>(
-        s1: <Self::Query as WorldQuery>::Item<'a>,
-    ) -> Self::UpdateDependencies<'a> {
-        s1.into()
+        s1.is_updated
     }
 }
 
@@ -273,7 +255,6 @@ macro_rules! impl_state_set {
         $(#[$meta])*
         impl<$($type: State), *> StateSet for ($($type, )*) {
             type Query = ($(&'static StateData<$type>, )*);
-            type UpdateDependencies<'a> = ($(StateUpdateDependency<'a, $type>, )*);
 
             const HIGHEST_ORDER: u32 = max!($($type::ORDER), +);
 
@@ -286,19 +267,13 @@ macro_rules! impl_state_set {
                 +
             }
 
-            fn register_states(world: &mut World) {
+            fn register_required_states(world: &mut World) {
                 $($type::register_state(world);)
                 +
             }
 
             fn is_changed(($($var, )+): &<Self::Query as WorldQuery>::Item<'_>) -> bool {
-                $($var.updated) || +
-            }
-
-            fn as_state_update_dependency<'a>(
-                ($($var, )+): <Self::Query as WorldQuery>::Item<'a>,
-            ) -> Self::UpdateDependencies<'a> {
-                ($($var.into(), )+)
+                $($var.is_updated) || +
             }
         }
     };
@@ -328,14 +303,14 @@ impl<S: State> Default for RegisteredState<S> {
 }
 
 #[derive(Default, Debug, Clone)]
-pub enum StateUpdate<S: State> {
+pub enum StateUpdate<S> {
     #[default]
     Nothing,
     Disable,
     Enable(S),
 }
 
-impl<S: State> StateUpdate<S> {
+impl<S> StateUpdate<S> {
     pub fn is_something(&self) -> bool {
         if let Self::Nothing = self {
             false
@@ -352,7 +327,15 @@ impl<S: State> StateUpdate<S> {
         }
     }
 
-    pub fn reset(&mut self) {
-        *self = StateUpdate::Nothing;
+    pub fn as_ref(&self) -> StateUpdate<&S> {
+        match &self {
+            StateUpdate::Nothing => StateUpdate::Nothing,
+            StateUpdate::Disable => StateUpdate::Disable,
+            StateUpdate::Enable(s) => StateUpdate::Enable(s),
+        }
+    }
+
+    pub fn take(&mut self) -> Self {
+        std::mem::take(self)
     }
 }
