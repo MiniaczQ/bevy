@@ -6,7 +6,7 @@ use bevy_ecs::{
     query::{Has, QuerySingleError, ReadOnlyQueryData, With, WorldQuery},
     schedule::{IntoSystemConfigs, IntoSystemSetConfigs, ScheduleLabel, Schedules, SystemSet},
     storage::Storages,
-    system::Query,
+    system::{Commands, Query},
     world::World,
 };
 use bevy_utils::tracing::warn;
@@ -138,11 +138,20 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         }
     }
 
-    fn exit_system(query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>) {
+    fn exit_system(
+        mut commands: Commands,
+        query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
+        node: Query<&StateGraphNode<Self>>,
+    ) {
+        let node = node.single();
         for (entity, state, is_global) in query.iter() {
             if !state.updated {
                 continue;
             }
+            for reactor in &node.on_enter {
+                reactor(state, &mut commands);
+            }
+
             // TODO: replace with transitions
             let pre = if is_global {
                 "global".to_owned()
@@ -159,11 +168,20 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         }
     }
 
-    fn enter_system(query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>) {
-        for (entity, state, is_global) in query.iter() {
+    fn enter_system(
+        mut commands: Commands,
+        states: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
+        node: Query<&StateGraphNode<Self>>,
+    ) {
+        let node = node.single();
+        for (entity, state, is_global) in states.iter() {
             if !state.updated {
                 continue;
             }
+            for reactor in &node.on_enter {
+                reactor(state, &mut commands);
+            }
+
             // TODO: replace with transitions
             let pre = if is_global {
                 "global".to_owned()
@@ -358,10 +376,20 @@ impl<Parent: State, Child: State> Default for StateGraphEdge<Parent, Child> {
 
 /// Node of a state.
 #[derive(Component)]
-pub struct StateGraphNode<S: State>(PhantomData<S>);
+pub struct StateGraphNode<S: State> {
+    /// Reactions to state exiting.
+    on_exit: Vec<Box<Reaction<S>>>,
+    /// Reactions to state entering.
+    on_enter: Vec<Box<Reaction<S>>>,
+}
+
+type Reaction<S> = dyn Fn(&StateData<S>, &mut Commands) + Send + Sync + 'static;
 
 impl<S: State> Default for StateGraphNode<S> {
     fn default() -> Self {
-        Self(PhantomData::default())
+        Self {
+            on_exit: vec![],
+            on_enter: vec![],
+        }
     }
 }
