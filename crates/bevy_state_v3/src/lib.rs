@@ -35,6 +35,7 @@ mod tests {
 
     impl State for ManualState {
         type DependencySet = ();
+        type Target = StateUpdate<Self>;
 
         fn update<'a>(
             state: &mut StateData<Self>,
@@ -51,6 +52,7 @@ mod tests {
 
     impl State for ComputedState {
         type DependencySet = ManualState;
+        type Target = StateUpdate<Self>;
 
         fn update<'a>(
             state: &mut StateData<Self>,
@@ -77,6 +79,7 @@ mod tests {
 
     impl State for SubState {
         type DependencySet = ManualState;
+        type Target = StateUpdate<Self>;
 
         fn update<'a>(
             state: &mut StateData<Self>,
@@ -109,9 +112,9 @@ mod tests {
         world.register_state::<ManualState>();
         world.register_state::<ComputedState>();
         world.register_state::<SubState>();
-        world.init_state::<ManualState>(local, true);
-        world.init_state::<ComputedState>(local, true);
-        world.init_state::<SubState>(local, true);
+        world.init_state::<ManualState>(local, None, true);
+        world.init_state::<ComputedState>(local, None, true);
+        world.init_state::<SubState>(local, None, true);
         assert_states!(
             world,
             None::<ManualState>,
@@ -194,6 +197,7 @@ mod tests {
 
     impl State for SubState2 {
         type DependencySet = (ManualState, ManualState2);
+        type Target = StateUpdate<Self>;
 
         fn update<'a>(
             state: &mut StateData<Self>,
@@ -212,7 +216,7 @@ mod tests {
                     StateUpdate::Nothing
                 }
                 (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Nothing) => {
-                    StateUpdate::Enable(SubState2::default())
+                    StateUpdate::Enable(SubState2::X)
                 }
                 _ => StateUpdate::Disable,
             }
@@ -221,6 +225,7 @@ mod tests {
 
     impl State for ManualState2 {
         type DependencySet = ();
+        type Target = StateUpdate<Self>;
 
         fn update<'a>(
             state: &mut StateData<Self>,
@@ -240,10 +245,10 @@ mod tests {
         world.register_state::<ManualState2>();
         world.register_state::<SubState2>();
         world.register_state::<ComputedState>();
-        world.init_state::<ManualState>(None, true);
-        world.init_state::<ManualState>(None, true);
-        world.init_state::<SubState2>(None, true);
-        world.init_state::<ComputedState>(None, true);
+        world.init_state::<ManualState>(None, None, true);
+        world.init_state::<ManualState>(None, None, true);
+        world.init_state::<SubState2>(None, None, true);
+        world.init_state::<ComputedState>(None, None, true);
         world.state_target(None, Some(ManualState::A));
         world.state_target(None, Some(ManualState2::C));
         world.run_schedule(StateTransition);

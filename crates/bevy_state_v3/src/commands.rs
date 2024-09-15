@@ -1,4 +1,4 @@
-use std::{any::type_name, marker::PhantomData};
+use std::any::type_name;
 
 use bevy_ecs::{
     entity::Entity,
@@ -15,16 +15,16 @@ use crate::{
 
 struct InitializeStateCommand<S: State> {
     local: Option<Entity>,
+    initial: Option<S>,
     suppress_initial_update: bool,
-    _data: PhantomData<S>,
 }
 
 impl<S: State> InitializeStateCommand<S> {
-    fn new(local: Option<Entity>, suppress_initial_update: bool) -> Self {
+    fn new(local: Option<Entity>, initial: Option<S>, suppress_initial_update: bool) -> Self {
         Self {
             local,
+            initial,
             suppress_initial_update,
-            _data: PhantomData::default(),
         }
     }
 }
@@ -57,9 +57,10 @@ impl<S: State + Send + Sync + 'static> Command for InitializeStateCommand<S> {
             .ok();
         match state_data {
             None => {
-                world
-                    .entity_mut(entity)
-                    .insert(StateData::<S>::new(self.suppress_initial_update));
+                world.entity_mut(entity).insert(StateData::<S>::new(
+                    self.initial,
+                    self.suppress_initial_update,
+                ));
             }
             Some(_) => {
                 warn!(
@@ -71,18 +72,18 @@ impl<S: State + Send + Sync + 'static> Command for InitializeStateCommand<S> {
     }
 }
 
-struct SetStateTargetCommand<S: State> {
+struct SetStateTargetCommand<S: State<Target = StateUpdate<S>>> {
     local: Option<Entity>,
     target: Option<S>,
 }
 
-impl<S: State> SetStateTargetCommand<S> {
+impl<S: State<Target = StateUpdate<S>>> SetStateTargetCommand<S> {
     fn new(local: Option<Entity>, target: Option<S>) -> Self {
         Self { local, target }
     }
 }
 
-impl<S: State> Command for SetStateTargetCommand<S> {
+impl<S: State<Target = StateUpdate<S>>> Command for SetStateTargetCommand<S> {
     fn apply(self, world: &mut World) {
         let entity = match self.local {
             Some(entity) => entity,
@@ -125,12 +126,21 @@ pub trait StatesExt {
 
     /// Initializes state.
     /// If `local` is `None`, this will work on the global state.
-    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool);
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    );
 
     /// Set the next value of the state.
     /// This value will be used to update the state in the [`StateTransition`](crate::state::StateTransition) schedule.
     /// If `local` is `None`, this will work on the global state.
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>);
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    );
 }
 
 impl StatesExt for Commands<'_, '_> {
@@ -140,14 +150,24 @@ impl StatesExt for Commands<'_, '_> {
         });
     }
 
-    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) {
         self.add(InitializeStateCommand::<S>::new(
             local,
+            initial,
             suppress_initial_update,
         ))
     }
 
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) {
         self.add(SetStateTargetCommand::new(local, target))
     }
 }
@@ -157,11 +177,20 @@ impl StatesExt for World {
         S::register_state(self);
     }
 
-    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
-        InitializeStateCommand::<S>::new(local, suppress_initial_update).apply(self);
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) {
+        InitializeStateCommand::<S>::new(local, initial, suppress_initial_update).apply(self);
     }
 
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) {
         SetStateTargetCommand::new(local, target).apply(self);
     }
 }
@@ -172,12 +201,21 @@ impl StatesExt for bevy_app::SubApp {
         self.world_mut().register_state::<S>();
     }
 
-    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) {
         self.world_mut()
-            .init_state::<S>(local, suppress_initial_update);
+            .init_state::<S>(local, initial, suppress_initial_update);
     }
 
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) {
         self.world_mut().state_target(local, target);
     }
 }
@@ -188,12 +226,21 @@ impl StatesExt for bevy_app::App {
         self.main_mut().register_state::<S>();
     }
 
-    fn init_state<S: State>(&mut self, local: Option<Entity>, suppress_initial_update: bool) {
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) {
         self.main_mut()
-            .init_state::<S>(local, suppress_initial_update);
+            .init_state::<S>(local, initial, suppress_initial_update);
     }
 
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>) {
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) {
         self.main_mut().state_target(local, target);
     }
 }

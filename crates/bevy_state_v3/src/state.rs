@@ -20,25 +20,24 @@ use crate::{
 pub struct StateTransition;
 
 #[derive(SystemSet, Clone, Debug, PartialEq, Eq, Hash)]
-/// System set for ordering state machinery.
-/// This consists of 3 steps:
-/// - updates - check for state change requests, evaluate new values and propagate updates to children,
-/// - exits - runs transitions from bottom to top,
-/// - enters - runs transitions from top to bottom.
-///
-/// Each step is divided into smaller steps based on the state's order in hierarchy.
+/// The `StateTransition` schedule runs 3 system sets:
+/// - [`AllUpdates`] - Updates based on `target` and dependency changes from root states to leaf states, sets the `updated` flag.
+/// - [`AllExits`] - Triggers [`StateExit<S>`] observers from leaf states to root states, targeted for local state, untargeted for global state.
+/// - [`AllEnters`] - Triggers [`StateEnter<S>`] observers from root states to leaf states, targeted for local state, untargeted for global state.
+/// Smaller sets are used to specify order in the grap.
+/// Order is derived when specifying state dependencies, smaller value meaning closer to root.
 pub enum StateSystemSet {
-    /// Group for all updates.
+    /// All [`Update`]s.
     AllUpdates,
-    /// Update at a specific order, from bottom (root) to top (leaf).
+    /// Lower values before higher ones.
     Update(u32),
-    /// Group for all exits.
+    /// All [`Exit`]s.
     AllExits,
-    /// Exit at a specific order, from top (leaf) to bottom (root).
+    /// Higher values then lower ones.
     Exit(u32),
-    /// Group for all enters.
+    /// All [`Enter`]s.
     AllEnters,
-    /// Enter at a specific order, from bottom (root) to top (leaf).
+    /// Same as [`Update`], lower values before higher ones.
     Enter(u32),
 }
 
@@ -78,6 +77,9 @@ pub type StateDependencies<'a, S> =
 pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     /// Parent states which this state depends on.
     type DependencySet: StateSet;
+
+    /// Backing structure for picking state target.
+    type Target: StateTarget;
 
     /// Never set this to 0.
     const ORDER: u32 = Self::DependencySet::HIGHEST_ORDER + 1;
@@ -132,12 +134,12 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         for (mut state, dependencies) in query.iter_mut() {
             state.is_updated = false;
             let is_dependency_set_changed = Self::DependencySet::is_changed(&dependencies);
-            let is_target_changed = state.target.is_something();
+            let is_target_changed = state.target.is_changed();
             if is_dependency_set_changed || is_target_changed {
                 let result = Self::update(&mut state, dependencies);
                 if let Some(next) = result.as_options() {
-                    state.target.take();
                     state.update(next);
+                    state.target.reset();
                 }
             }
         }
@@ -338,4 +340,20 @@ impl<S> StateUpdate<S> {
     pub fn take(&mut self) -> Self {
         std::mem::take(self)
     }
+}
+
+impl<S: State> StateTarget for StateUpdate<S> {
+    fn is_changed(&self) -> bool {
+        self.is_something()
+    }
+
+    fn reset(&mut self) {
+        self.take();
+    }
+}
+
+pub trait StateTarget: Default + Send + Sync + 'static {
+    fn is_changed(&self) -> bool;
+
+    fn reset(&mut self);
 }

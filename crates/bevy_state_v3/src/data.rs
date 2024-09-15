@@ -11,7 +11,7 @@ pub struct StateData<S: State> {
     pub(crate) is_reentrant: bool,
     pub(crate) previous: Option<S>,
     pub(crate) current: Option<S>,
-    pub(crate) target: StateUpdate<S>,
+    pub(crate) target: S::Target,
     pub(crate) is_updated: bool,
 }
 
@@ -21,7 +21,7 @@ impl<S: State> Default for StateData<S> {
             is_reentrant: false,
             previous: None,
             current: None,
-            target: StateUpdate::Disable,
+            target: S::Target::default(),
             is_updated: false,
         }
     }
@@ -44,8 +44,9 @@ impl<S: State> Component for StateData<S> {
 }
 
 impl<S: State> StateData<S> {
-    pub(crate) fn new(suppress_initial_update: bool) -> Self {
+    pub(crate) fn new(initial: Option<S>, suppress_initial_update: bool) -> Self {
         Self {
+            current: initial,
             is_updated: !suppress_initial_update,
             ..Default::default()
         }
@@ -87,12 +88,12 @@ impl<S: State> StateData<S> {
     }
 
     /// Reference to the target.
-    pub fn target(&self) -> StateUpdate<&S> {
-        self.target.as_ref()
+    pub fn target(&self) -> &S::Target {
+        &self.target
     }
 
     /// Mutable reference to the target.
-    pub fn target_mut(&mut self) -> &mut StateUpdate<S> {
+    pub fn target_mut(&mut self) -> &mut S::Target {
         &mut self.target
     }
 }
