@@ -140,6 +140,10 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
 
     fn exit_system(query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>) {
         for (entity, state, is_global) in query.iter() {
+            if !state.updated {
+                continue;
+            }
+            // TODO: replace with transitions
             let pre = if is_global {
                 "global".to_owned()
             } else {
@@ -157,6 +161,10 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
 
     fn enter_system(query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>) {
         for (entity, state, is_global) in query.iter() {
+            if !state.updated {
+                continue;
+            }
+            // TODO: replace with transitions
             let pre = if is_global {
                 "global".to_owned()
             } else {
