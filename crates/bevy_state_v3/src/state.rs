@@ -134,7 +134,7 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         for (mut state, dependencies) in query.iter_mut() {
             state.is_updated = false;
             let is_dependency_set_changed = Self::DependencySet::is_changed(&dependencies);
-            let is_target_changed = state.target.is_changed();
+            let is_target_changed = state.target.should_update();
             if is_dependency_set_changed || is_target_changed {
                 let result = Self::update(&mut state, dependencies);
                 if let Some(next) = result.as_options() {
@@ -349,15 +349,15 @@ impl<S> StateUpdate<S> {
 /// - mutable state that tracks changes,
 /// - stack of states.
 pub trait StateTarget: Default + Send + Sync + 'static {
-    /// Returns whether state should be updated.
-    fn is_changed(&self) -> bool;
+    /// Returns whether the state should be updated.
+    fn should_update(&self) -> bool;
 
-    /// Resets the target, usually by disabling the [`Self::is_changed`] until another request.
+    /// Resets the target to reset change detection.
     fn reset(&mut self);
 }
 
 impl<S: State> StateTarget for StateUpdate<S> {
-    fn is_changed(&self) -> bool {
+    fn should_update(&self) -> bool {
         self.is_something()
     }
 
@@ -367,7 +367,7 @@ impl<S: State> StateTarget for StateUpdate<S> {
 }
 
 impl StateTarget for () {
-    fn is_changed(&self) -> bool {
+    fn should_update(&self) -> bool {
         false
     }
 

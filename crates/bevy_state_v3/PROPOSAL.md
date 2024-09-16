@@ -38,7 +38,8 @@ struct StateData<S: State> {
     current: Option<S>,
     /// Proposed state value to be considered during next [`StateTransition`].
     /// How this value actually impacts the state depends on the [`State::update`] function.
-    target: Option<Option<S>>,
+    /// Most often this will be [`StateUpdate`].
+    target: S::Target,
     /// Whether this state was updated in the last [`StateTransition`] schedule.
     /// For a standard use case, this happens once per frame.
     updated: bool,
@@ -112,12 +113,14 @@ How states update themselves.
 
 State change can be triggered from two sources:
 - one of the state dependencies changed,
-- state `target` value was set.
+- state `target` has changed.
 When any condition is met, the `State::update` function is called.
 The return value of this function decides whether and how we update this state.
 
 ```rs
 trait State {
+    type Target: StateTarget = StateUpdate<Self>;
+
     /// How next value of state is decided.
     fn update(
         // Current state.
@@ -125,6 +128,20 @@ trait State {
         // Dependencies.
         dependencies: (StateUpdateDependency<D1>, StateUpdateDependency<D2>, ...),
     ) -> StateUpdate<Self>;
+}
+
+pub trait StateTarget: Default + Send + Sync + 'static {
+    /// Returns whether the state should be updated.
+    fn should_update(&self) -> bool;
+
+    /// Resets the target to reset change detection.
+    fn reset(&mut self);
+}
+
+pub enum StateUpdate<S> {
+    Nothing,
+    Disable,
+    Enable(S),
 }
 ```
 
@@ -151,7 +168,9 @@ pub trait StatesExt {
     /// Sets the [`target`] value in [`StateData`],
     /// which will result in an [`update`] call during [`StateTransition`] schedule.
     /// Much like [`init_state`] you need to provide a local entity or nothing, for global state.
-    fn state_target<S: State>(&mut self, local: Option<Entity>, target: Option<S>);
+    ///
+    /// This only works with the [`StateUpdate`] target.
+    fn state_target<S: State<Target = StateUpdate<S>>>(&mut self, local: Option<Entity>, target: Option<S>);
 }
 ```
 
