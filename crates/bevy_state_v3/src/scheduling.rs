@@ -2,6 +2,10 @@ use bevy_ecs::schedule::{IntoSystemSetConfigs, ScheduleLabel, SystemSet};
 
 use crate::state::State;
 
+/// State transition schedule.
+/// All states are updated and their events are emitted during this schedule.
+/// You can run this schedule by hand to perform state transition at different intervals.
+/// The [`StatesPlugin`](crate::app::StatesPlugin) adds this transition before [`PreStartup`](bevy_app::PreStartup) and [`PreUpdate`](bevy_app::PreUpdate).
 #[derive(ScheduleLabel, Debug, PartialEq, Eq, Hash, Clone)]
 pub struct StateTransition;
 

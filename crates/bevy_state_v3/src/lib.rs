@@ -8,6 +8,7 @@ mod scheduling;
 mod state;
 mod state_set;
 mod transitions;
+mod util;
 
 #[cfg(test)]
 mod tests {
