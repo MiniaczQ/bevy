@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
-#[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
+#[derive(State, Clone, Eq, PartialEq, Debug, Hash, Default)]
 enum GameState {
     #[default]
     Playing,
@@ -24,9 +24,10 @@ fn main() {
             5.0,
             TimerMode::Repeating,
         )))
-        .init_state::<GameState>()
+        .register_state::<GameState>(StateTransitionsConfig::empty())
+        .init_state(None, Some(GameState::default()), false)
         .add_systems(Startup, setup_cameras)
-        .add_systems(OnEnter(GameState::Playing), setup)
+        .observe(setup)
         .add_systems(
             Update,
             (
@@ -36,15 +37,14 @@ fn main() {
                 scoreboard_system,
                 spawn_bonus,
             )
-                .run_if(in_state(GameState::Playing)),
+                .run_if(in_state(Some(GameState::Playing))),
         )
-        .add_systems(OnExit(GameState::Playing), teardown)
-        .add_systems(OnEnter(GameState::GameOver), display_score)
+        .observe(teardown)
+        .observe(display_score)
         .add_systems(
             Update,
-            gameover_keyboard.run_if(in_state(GameState::GameOver)),
+            gameover_keyboard.run_if(in_state(Some(GameState::GameOver))),
         )
-        .add_systems(OnExit(GameState::GameOver), teardown)
         .run();
 }
 
@@ -105,7 +105,15 @@ fn setup_cameras(mut commands: Commands, mut game: ResMut<Game>) {
     });
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut game: ResMut<Game>) {
+fn setup(
+    trigger: Trigger<OnEnter<GameState>>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut game: ResMut<Game>,
+) {
+    if trigger.event().current != Some(GameState::Playing) {
+        return;
+    }
     let mut rng = if std::env::var("GITHUB_ACTIONS") == Ok("true".to_string()) {
         // We're seeding the PRNG here to make this example deterministic for testing purposes.
         // This isn't strictly required in practical use unless you need your app to be deterministic.
@@ -197,7 +205,11 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, mut game: ResMu
 }
 
 // remove all entities that are not a camera or window
-fn teardown(mut commands: Commands, entities: Query<Entity, (Without<Camera>, Without<Window>)>) {
+fn teardown(
+    _trigger: Trigger<OnExit<GameState>>,
+    mut commands: Commands,
+    entities: Query<Entity, (Without<Camera>, Without<Window>)>,
+) {
     for entity in &entities {
         commands.entity(entity).despawn();
     }
@@ -314,12 +326,11 @@ fn focus_camera(
 
 // despawn the bonus if there is one, then spawn a new one at a random location
 fn spawn_bonus(
-    time: Res<Time>,
-    mut timer: ResMut<BonusSpawnTimer>,
-    mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
+    mut timer: ResMut<BonusSpawnTimer>,
     mut game: ResMut<Game>,
     mut rng: ResMut<Random>,
+    time: Res<Time>,
 ) {
     // make sure we wait enough time before spawning the next cake
     if !timer.0.tick(time.delta()).finished() {
@@ -331,7 +342,7 @@ fn spawn_bonus(
         commands.entity(entity).despawn_recursive();
         game.bonus.entity = None;
         if game.score <= -5 {
-            next_state.set(GameState::GameOver);
+            commands.state_target(None, Some(GameState::GameOver));
             return;
         }
     }
@@ -389,17 +400,17 @@ fn scoreboard_system(game: Res<Game>, mut query: Query<&mut Text>) {
 }
 
 // restart the game when pressing spacebar
-fn gameover_keyboard(
-    mut next_state: ResMut<NextState<GameState>>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-) {
+fn gameover_keyboard(mut commands: Commands, keyboard_input: Res<ButtonInput<KeyCode>>) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        next_state.set(GameState::Playing);
+        commands.state_target(None, Some(GameState::Playing));
     }
 }
 
 // display the number of cake eaten before losing
-fn display_score(mut commands: Commands, game: Res<Game>) {
+fn display_score(trigger: Trigger<OnEnter<GameState>>, mut commands: Commands, game: Res<Game>) {
+    if trigger.event().current != Some(GameState::GameOver) {
+        return;
+    }
     commands
         .spawn(NodeBundle {
             style: Style {

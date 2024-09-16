@@ -55,7 +55,7 @@ plugin_group! {
         #[cfg(feature = "bevy_gizmos")]
         bevy_gizmos:::GizmoPlugin,
         #[cfg(feature = "bevy_state")]
-        bevy_state::app:::StatesPlugin,
+        bevy_state::app:::StatePlugin,
         #[cfg(feature = "bevy_picking")]
         bevy_picking:::DefaultPickingPlugins,
         #[cfg(feature = "bevy_dev_tools")]

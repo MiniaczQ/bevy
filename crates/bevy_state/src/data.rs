@@ -55,14 +55,6 @@ impl<S: State> Component for StateData<S> {
 }
 
 impl<S: State> StateData<S> {
-    pub(crate) fn new(initial: Option<S>, suppress_initial_update: bool) -> Self {
-        Self {
-            current: initial,
-            is_updated: !suppress_initial_update,
-            ..Default::default()
-        }
-    }
-
     pub(crate) fn update(&mut self, next: Option<S>) {
         if next == self.current {
             self.is_reentrant = true;
@@ -76,6 +68,15 @@ impl<S: State> StateData<S> {
 }
 
 impl<S: State> StateData<S> {
+    /// Creates a new instance with initial value.
+    pub fn new(initial: Option<S>, suppress_initial_update: bool) -> Self {
+        Self {
+            current: initial,
+            is_updated: !suppress_initial_update,
+            ..Default::default()
+        }
+    }
+
     /// Returns the current state.
     pub fn current(&self) -> Option<&S> {
         self.current.as_ref()

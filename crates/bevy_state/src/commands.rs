@@ -1,30 +1,263 @@
-use bevy_ecs::{system::Commands, world::World};
-use bevy_utils::tracing::debug;
+use std::any::type_name;
 
-use crate::state::{FreelyMutableState, NextState};
+use bevy_ecs::{
+    entity::Entity,
+    query::{QuerySingleError, With},
+    system::Commands,
+    world::{Command, World},
+};
+use bevy_utils::tracing::warn;
 
-/// Extension trait for [`Commands`] adding `bevy_state` helpers.
-pub trait CommandsStatesExt {
-    /// Sets the next state the app should move to.
-    ///
-    /// Internally this schedules a command that updates the [`NextState<S>`](crate::prelude::NextState)
-    /// resource with `state`.
-    ///
-    /// Note that commands introduce sync points to the ECS schedule, so modifying `NextState`
-    /// directly may be more efficient depending on your use-case.
-    fn set_state<S: FreelyMutableState>(&mut self, state: S);
+use crate::{
+    data::{GlobalStateMarker, StateData, StateUpdate},
+    state::State,
+    transitions::StateTransitionsConfig,
+};
+
+struct InitializeStateCommand<S: State> {
+    local: Option<Entity>,
+    initial: Option<S>,
+    suppress_initial_update: bool,
 }
 
-impl CommandsStatesExt for Commands<'_, '_> {
-    fn set_state<S: FreelyMutableState>(&mut self, state: S) {
-        self.add(move |w: &mut World| {
-            let mut next = w.resource_mut::<NextState<S>>();
-            if let NextState::Pending(prev) = &*next {
-                if *prev != state {
-                    debug!("overwriting next state {:?} with {:?}", prev, state);
+impl<S: State> InitializeStateCommand<S> {
+    fn new(local: Option<Entity>, initial: Option<S>, suppress_initial_update: bool) -> Self {
+        Self {
+            local,
+            initial,
+            suppress_initial_update,
+        }
+    }
+}
+
+impl<S: State + Send + Sync + 'static> Command for InitializeStateCommand<S> {
+    fn apply(self, world: &mut World) {
+        let entity = match self.local {
+            Some(entity) => entity,
+            None => {
+                let result = world
+                    .query_filtered::<Entity, With<GlobalStateMarker>>()
+                    .get_single(world);
+                match result {
+                    Ok(entity) => entity,
+                    Err(QuerySingleError::NoEntities(_)) => world.spawn(GlobalStateMarker).id(),
+                    Err(QuerySingleError::MultipleEntities(_)) => {
+                        warn!(
+                    "Insert global state command failed, multiple entities have the `GlobalStateMarker` component."
+                );
+                        return;
+                    }
                 }
             }
-            next.set(state);
+        };
+
+        // Register storage for state `S`.
+        let state_data = world
+            .query::<&mut StateData<S>>()
+            .get_mut(world, entity)
+            .ok();
+        match state_data {
+            None => {
+                world.entity_mut(entity).insert(StateData::<S>::new(
+                    self.initial,
+                    self.suppress_initial_update,
+                ));
+            }
+            Some(_) => {
+                warn!(
+                    "Attempted to initialize state {}, but it was already present.",
+                    type_name::<S>()
+                );
+            }
+        }
+    }
+}
+
+struct SetStateTargetCommand<S: State<Target = StateUpdate<S>>> {
+    local: Option<Entity>,
+    target: Option<S>,
+}
+
+impl<S: State<Target = StateUpdate<S>>> SetStateTargetCommand<S> {
+    fn new(local: Option<Entity>, target: Option<S>) -> Self {
+        Self { local, target }
+    }
+}
+
+impl<S: State<Target = StateUpdate<S>>> Command for SetStateTargetCommand<S> {
+    fn apply(self, world: &mut World) {
+        let entity = match self.local {
+            Some(entity) => entity,
+            None => {
+                match world
+                    .query_filtered::<Entity, With<GlobalStateMarker>>()
+                    .get_single(world)
+                {
+                    Err(QuerySingleError::NoEntities(_)) => {
+                        warn!("Set global state command failed, no global state entity exists.");
+                        return;
+                    }
+                    Err(QuerySingleError::MultipleEntities(_)) => {
+                        warn!("Set global state command failed, multiple global state entities exist.");
+                        return;
+                    }
+                    Ok(entity) => entity,
+                }
+            }
+        };
+        let Ok(mut state) = world.query::<&mut StateData<S>>().get_mut(world, entity) else {
+            warn!(
+                "Set state command failed, entity does not have state {}",
+                type_name::<S>()
+            );
+            return;
+        };
+        state.target = match self.target {
+            Some(s) => StateUpdate::Enable(s),
+            None => StateUpdate::Disable,
+        };
+    }
+}
+
+#[doc(hidden)]
+/// All of the operations can happen immediatelly (with [`World`], [`SubApp`](bevy_app::SubApp), [`App`](bevy_app::App)) or in a deferred manner (with [`Commands`]).
+pub trait StatesExt {
+    /// Registers machinery for this state as well as all dependencies.
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) -> &mut Self;
+
+    /// Adds the state to the provided `local` entity or otherwise the global state.
+    /// If initial update is suppresed, no initial transitions will be generated.
+    /// The state added this way is always disabled and has to be enabled through [`next_state`] method.
+    /// This also adds all dependencies through required components.
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) -> &mut Self;
+
+    /// Sets the [`State::Target`] value in [`StateData`],
+    /// which will result in an [`State::update`] call during [`StateTransition`](crate::state::StateTransition) schedule.
+    /// Much like [`StatesExt::init_state`] you need to provide a local entity or nothing, for global state.
+    ///
+    /// This only works with the [`StateUpdate`] target.
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) -> &mut Self;
+}
+
+impl StatesExt for Commands<'_, '_> {
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) -> &mut Self {
+        self.add(|world: &mut World| {
+            S::register_state(world, config, false);
         });
+        self
+    }
+
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) -> &mut Self {
+        self.add(InitializeStateCommand::<S>::new(
+            local,
+            initial,
+            suppress_initial_update,
+        ));
+        self
+    }
+
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) -> &mut Self {
+        self.add(SetStateTargetCommand::new(local, target));
+        self
+    }
+}
+
+impl StatesExt for World {
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) -> &mut Self {
+        S::register_state(self, config, false);
+        self
+    }
+
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) -> &mut Self {
+        InitializeStateCommand::<S>::new(local, initial, suppress_initial_update).apply(self);
+        self
+    }
+
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) -> &mut Self {
+        SetStateTargetCommand::new(local, target).apply(self);
+        self
+    }
+}
+
+#[cfg(feature = "bevy_app")]
+impl StatesExt for bevy_app::SubApp {
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) -> &mut Self {
+        self.world_mut().register_state::<S>(config);
+        self
+    }
+
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) -> &mut Self {
+        self.world_mut()
+            .init_state::<S>(local, initial, suppress_initial_update);
+        self
+    }
+
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) -> &mut Self {
+        self.world_mut().state_target(local, target);
+        self
+    }
+}
+
+#[cfg(feature = "bevy_app")]
+impl StatesExt for bevy_app::App {
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) -> &mut Self {
+        self.main_mut().register_state::<S>(config);
+        self
+    }
+
+    fn init_state<S: State>(
+        &mut self,
+        local: Option<Entity>,
+        initial: Option<S>,
+        suppress_initial_update: bool,
+    ) -> &mut Self {
+        self.main_mut()
+            .init_state::<S>(local, initial, suppress_initial_update);
+        self
+    }
+
+    fn state_target<S: State<Target = StateUpdate<S>>>(
+        &mut self,
+        local: Option<Entity>,
+        target: Option<S>,
+    ) -> &mut Self {
+        self.main_mut().state_target(local, target);
+        self
     }
 }

@@ -63,7 +63,7 @@ const PROJECTION_3D: Projection = Projection::Perspective(PerspectiveProjection 
 });
 
 /// State for tracking the currently displayed shape
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default, Reflect)]
+#[derive(State, Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Reflect)]
 enum CameraActive {
     #[default]
     /// The 2D shape is displayed
@@ -73,7 +73,7 @@ enum CameraActive {
 }
 
 /// State for tracking the currently displayed shape
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default, Reflect)]
+#[derive(State, Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Reflect)]
 enum BoundingShape {
     #[default]
     /// No bounding shapes
@@ -95,14 +95,16 @@ struct Shape3d;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .init_state::<BoundingShape>()
-        .init_state::<CameraActive>()
+        .register_state::<BoundingShape>(StateTransitionsConfig::empty())
+        .register_state::<CameraActive>(StateTransitionsConfig::empty())
+        .init_state(None, Some(BoundingShape::default()), true)
+        .init_state(None, Some(CameraActive::default()), true)
         .add_systems(Startup, setup)
         .add_systems(
             Update,
             (
-                (rotate_2d_shapes, bounding_shapes_2d).run_if(in_state(CameraActive::Dim2)),
-                (rotate_3d_shapes, bounding_shapes_3d).run_if(in_state(CameraActive::Dim3)),
+                (rotate_2d_shapes, bounding_shapes_2d).run_if(in_state(Some(CameraActive::Dim2))),
+                (rotate_3d_shapes, bounding_shapes_3d).run_if(in_state(Some(CameraActive::Dim3))),
                 update_bounding_shape.run_if(input_just_pressed(KeyCode::KeyB)),
                 switch_cameras.run_if(input_just_pressed(KeyCode::Space)),
             ),
@@ -196,7 +198,7 @@ fn rotate_2d_shapes(mut shapes: Query<&mut Transform, With<Shape2d>>, time: Res<
 fn bounding_shapes_2d(
     shapes: Query<&Transform, With<Shape2d>>,
     mut gizmos: Gizmos,
-    bounding_shape: Res<State<BoundingShape>>,
+    state: GlobalState<BoundingShape>,
 ) {
     for transform in shapes.iter() {
         // Get the rotation angle from the 3D rotation.
@@ -204,7 +206,7 @@ fn bounding_shapes_2d(
         let rotation = Rot2::radians(rotation);
         let isometry = Isometry2d::new(transform.translation.xy(), rotation);
 
-        match bounding_shape.get() {
+        match state.get().current().unwrap() {
             BoundingShape::None => (),
             BoundingShape::BoundingBox => {
                 // Get the AABB of the primitive with the rotation and translation of the mesh.
@@ -245,10 +247,10 @@ fn rotate_3d_shapes(mut shapes: Query<&mut Transform, With<Shape3d>>, time: Res<
 fn bounding_shapes_3d(
     shapes: Query<&Transform, With<Shape3d>>,
     mut gizmos: Gizmos,
-    bounding_shape: Res<State<BoundingShape>>,
+    state: GlobalState<BoundingShape>,
 ) {
     for transform in shapes.iter() {
-        match bounding_shape.get() {
+        match state.get().current().unwrap() {
             BoundingShape::None => (),
             BoundingShape::BoundingBox => {
                 // Get the AABB of the extrusion with the rotation and translation of the mesh.
@@ -275,31 +277,29 @@ fn bounding_shapes_3d(
 }
 
 // Switch to the next bounding shape.
-fn update_bounding_shape(
-    current: Res<State<BoundingShape>>,
-    mut next: ResMut<NextState<BoundingShape>>,
-) {
-    next.set(match current.get() {
+fn update_bounding_shape(mut commands: Commands, state: GlobalState<BoundingShape>) {
+    let next = match state.get().current().unwrap() {
         BoundingShape::None => BoundingShape::BoundingBox,
         BoundingShape::BoundingBox => BoundingShape::BoundingSphere,
         BoundingShape::BoundingSphere => BoundingShape::None,
-    });
+    };
+    commands.state_target(None, Some(next));
 }
 
 // Switch between 2D and 3D cameras.
 fn switch_cameras(
-    current: Res<State<CameraActive>>,
-    mut next: ResMut<NextState<CameraActive>>,
+    mut commands: Commands,
+    state: GlobalState<CameraActive>,
     mut camera: Query<(&mut Transform, &mut Projection)>,
 ) {
-    let next_state = match current.get() {
+    let next = match state.get().current().unwrap() {
         CameraActive::Dim2 => CameraActive::Dim3,
         CameraActive::Dim3 => CameraActive::Dim2,
     };
-    next.set(next_state);
+    commands.state_target(None, Some(next));
 
     let (mut transform, mut projection) = camera.single_mut();
-    match next_state {
+    match next {
         CameraActive::Dim2 => {
             *transform = TRANSFORM_2D;
             *projection = PROJECTION_2D;

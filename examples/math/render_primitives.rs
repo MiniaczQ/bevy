@@ -14,8 +14,10 @@ fn main() {
     let mut app = App::new();
 
     app.add_plugins(DefaultPlugins)
-        .init_state::<PrimitiveSelected>()
-        .init_state::<CameraActive>();
+        .register_state::<PrimitiveSelected>(StateTransitionsConfig::empty())
+        .init_state(None, Some(PrimitiveSelected::default()), true)
+        .register_state::<CameraActive>(StateTransitionsConfig::empty())
+        .init_state(None, Some(CameraActive::default()), true);
 
     // cameras
     app.add_systems(Startup, (setup_cameras, setup_lights, setup_ambient_light))
@@ -43,8 +45,8 @@ fn main() {
             (
                 switch_to_next_primitive.run_if(input_just_pressed(KeyCode::ArrowUp)),
                 switch_to_previous_primitive.run_if(input_just_pressed(KeyCode::ArrowDown)),
-                draw_gizmos_2d.run_if(in_mode(CameraActive::Dim2)),
-                draw_gizmos_3d.run_if(in_mode(CameraActive::Dim3)),
+                draw_gizmos_2d.run_if(in_state(Some(CameraActive::Dim2))),
+                draw_gizmos_3d.run_if(in_state(Some(CameraActive::Dim3))),
                 update_primitive_meshes
                     .run_if(state_changed::<PrimitiveSelected>.or(state_changed::<CameraActive>)),
                 rotate_primitive_2d_meshes,
@@ -56,7 +58,7 @@ fn main() {
 }
 
 /// State for tracking which of the two cameras (2D & 3D) is currently active
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default, Reflect)]
+#[derive(State, Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Reflect)]
 enum CameraActive {
     #[default]
     /// 2D Camera is active
@@ -66,7 +68,7 @@ enum CameraActive {
 }
 
 /// State for tracking which primitives are currently displayed
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, States, Default, Reflect)]
+#[derive(State, Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Reflect)]
 enum PrimitiveSelected {
     #[default]
     RectangleAndCuboid,
@@ -338,14 +340,14 @@ pub struct HeaderText;
 pub struct HeaderNode;
 
 fn update_active_cameras(
-    state: Res<State<CameraActive>>,
+    state: GlobalState<CameraActive>,
     mut camera_2d: Query<(Entity, &mut Camera), With<Camera2d>>,
     mut camera_3d: Query<(Entity, &mut Camera), (With<Camera3d>, Without<Camera2d>)>,
     mut text: Query<&mut TargetCamera, With<HeaderNode>>,
 ) {
     let (entity_2d, mut cam_2d) = camera_2d.single_mut();
     let (entity_3d, mut cam_3d) = camera_3d.single_mut();
-    let is_camera_2d_active = matches!(*state.get(), CameraActive::Dim2);
+    let is_camera_2d_active = matches!(state.get().current().unwrap(), CameraActive::Dim2);
 
     cam_2d.is_active = is_camera_2d_active;
     cam_3d.is_active = !is_camera_2d_active;
@@ -361,12 +363,12 @@ fn update_active_cameras(
     });
 }
 
-fn switch_cameras(current: Res<State<CameraActive>>, mut next: ResMut<NextState<CameraActive>>) {
-    let next_state = match current.get() {
+fn switch_cameras(mut commands: Commands, state: GlobalState<CameraActive>) {
+    let next = match state.get().current().unwrap() {
         CameraActive::Dim2 => CameraActive::Dim3,
         CameraActive::Dim3 => CameraActive::Dim2,
     };
-    next.set(next_state);
+    commands.state_target(None, Some(next));
 }
 
 fn setup_text(mut commands: Commands, cameras: Query<(Entity, &Camera)>) {
@@ -412,10 +414,10 @@ fn setup_text(mut commands: Commands, cameras: Query<(Entity, &Camera)>) {
 }
 
 fn update_text(
-    primitive_state: Res<State<PrimitiveSelected>>,
+    state: GlobalState<PrimitiveSelected>,
     mut header: Query<&mut Text, With<HeaderText>>,
 ) {
-    let new_text = format!("{text}", text = primitive_state.get());
+    let new_text = format!("{text}", text = state.get().current().unwrap());
     header.iter_mut().for_each(|mut header_text| {
         if let Some(kind) = header_text.sections.get_mut(1) {
             kind.value.clone_from(&new_text);
@@ -423,33 +425,23 @@ fn update_text(
     });
 }
 
-fn switch_to_next_primitive(
-    current: Res<State<PrimitiveSelected>>,
-    mut next: ResMut<NextState<PrimitiveSelected>>,
-) {
-    let next_state = current.get().next();
-    next.set(next_state);
+fn switch_to_next_primitive(mut commands: Commands, state: GlobalState<PrimitiveSelected>) {
+    let next = state.get().current().unwrap().next();
+    commands.state_target(None, Some(next));
 }
 
-fn switch_to_previous_primitive(
-    current: Res<State<PrimitiveSelected>>,
-    mut next: ResMut<NextState<PrimitiveSelected>>,
-) {
-    let next_state = current.get().previous();
-    next.set(next_state);
+fn switch_to_previous_primitive(mut commands: Commands, state: GlobalState<PrimitiveSelected>) {
+    let next = state.get().current().unwrap().previous();
+    commands.state_target(None, Some(next));
 }
 
-fn in_mode(active: CameraActive) -> impl Fn(Res<State<CameraActive>>) -> bool {
-    move |state| *state.get() == active
-}
-
-fn draw_gizmos_2d(mut gizmos: Gizmos, state: Res<State<PrimitiveSelected>>, time: Res<Time>) {
+fn draw_gizmos_2d(mut gizmos: Gizmos, state: GlobalState<PrimitiveSelected>, time: Res<Time>) {
     const POSITION: Vec2 = Vec2::new(-LEFT_RIGHT_OFFSET_2D, 0.0);
     let angle = time.elapsed_seconds();
     let isometry = Isometry2d::new(POSITION, Rot2::radians(angle));
     let color = Color::WHITE;
 
-    match state.get() {
+    match state.get().current().unwrap() {
         PrimitiveSelected::RectangleAndCuboid => {
             gizmos.primitive_2d(&RECTANGLE, isometry, color);
         }
@@ -594,13 +586,13 @@ fn spawn_primitive_3d(
 }
 
 fn update_primitive_meshes(
-    camera_state: Res<State<CameraActive>>,
-    primitive_state: Res<State<PrimitiveSelected>>,
+    camera_state: GlobalState<CameraActive>,
+    primitive_state: GlobalState<PrimitiveSelected>,
     mut primitives: Query<(&mut Visibility, &PrimitiveData)>,
 ) {
     primitives.iter_mut().for_each(|(mut vis, primitive)| {
-        let visible = primitive.camera_mode == *camera_state.get()
-            && primitive.primitive_state == *primitive_state.get();
+        let visible = primitive.camera_mode == *camera_state.get().current().unwrap()
+            && primitive.primitive_state == *primitive_state.get().current().unwrap();
         *vis = if visible {
             Visibility::Inherited
         } else {
@@ -650,7 +642,7 @@ fn rotate_primitive_3d_meshes(
         });
 }
 
-fn draw_gizmos_3d(mut gizmos: Gizmos, state: Res<State<PrimitiveSelected>>, time: Res<Time>) {
+fn draw_gizmos_3d(mut gizmos: Gizmos, state: GlobalState<PrimitiveSelected>, time: Res<Time>) {
     const POSITION: Vec3 = Vec3::new(LEFT_RIGHT_OFFSET_3D, 0.0, 0.0);
     let rotation = Quat::from_rotation_arc(
         Vec3::Z,
@@ -666,7 +658,7 @@ fn draw_gizmos_3d(mut gizmos: Gizmos, state: Res<State<PrimitiveSelected>>, time
     let color = Color::WHITE;
     let resolution = 10;
 
-    match state.get() {
+    match state.get().current().unwrap() {
         PrimitiveSelected::RectangleAndCuboid => {
             gizmos.primitive_3d(&CUBOID, isometry, color);
         }

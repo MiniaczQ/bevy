@@ -1811,63 +1811,24 @@ category = "ECS (Entity Component System)"
 wasm = false
 
 [[example]]
-name = "states"
-path = "examples/state/states.rs"
+name = "global_state"
+path = "examples/state/global_state.rs"
 doc-scrape-examples = true
-required-features = ["bevy_dev_tools"]
 
-[package.metadata.example.states]
-name = "States"
-description = "Illustrates how to use States to control transitioning from a Menu state to an InGame state."
+[package.metadata.example.global_state]
+name = "Global state"
+description = "Simple way of using global state"
 category = "State"
 wasm = false
 
 [[example]]
-name = "sub_states"
-path = "examples/state/sub_states.rs"
+name = "local_state"
+path = "examples/state/local_state.rs"
 doc-scrape-examples = true
-required-features = ["bevy_dev_tools"]
 
-[package.metadata.example.sub_states]
-name = "Sub States"
-description = "Using Sub States for hierarchical state handling."
-category = "State"
-wasm = false
-
-[[example]]
-name = "computed_states"
-path = "examples/state/computed_states.rs"
-doc-scrape-examples = true
-required-features = ["bevy_dev_tools"]
-
-[package.metadata.example.computed_states]
-name = "Computed States"
-description = "Advanced state patterns using Computed States."
-category = "State"
-wasm = false
-
-
-[[example]]
-name = "state_v3"
-path = "examples/state/simple.rs"
-doc-scrape-examples = true
-required-features = ["bevy_states_v3"]
-
-[package.metadata.example.state_v3]
-name = "Simple state"
-description = "TODO"
-category = "State v3"
-wasm = false
-
-[[example]]
-name = "custom_transitions"
-path = "examples/state/custom_transitions.rs"
-doc-scrape-examples = true
-required-features = ["bevy_dev_tools"]
-
-[package.metadata.example.custom_transitions]
-name = "Custom State Transition Behavior"
-description = "Creating and working with custom state transition schedules."
+[package.metadata.example.local_state]
+name = "Local state"
+description = "Simple way of using local state"
 category = "State"
 wasm = false
 

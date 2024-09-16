@@ -48,7 +48,21 @@ impl<'w, 's, S: State> GlobalStateMut<'w, 's, S> {
 }
 
 /// Run condition.
-/// Returns true if global state is set to this value.
+/// Returns true if global state is set to the specified target.
 pub fn in_state<S: State>(target: Option<S>) -> impl Fn(GlobalState<S>) -> bool {
     move |state: GlobalState<S>| state.get().current() == target.as_ref()
+}
+
+/// Run condition.
+/// Returns true if global state changed.
+pub fn state_changed<S: State>(state: GlobalState<S>) -> bool {
+    state.get().is_updated()
+}
+
+/// Run condition.
+/// Returns true if global state changed to the specified target.
+pub fn state_changed_to<S: State>(target: Option<S>) -> impl Fn(GlobalState<S>) -> bool {
+    move |state: GlobalState<S>| {
+        state.get().is_updated() && state.get().current() == target.as_ref()
+    }
 }

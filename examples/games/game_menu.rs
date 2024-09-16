@@ -7,7 +7,7 @@ use bevy::prelude::*;
 const TEXT_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
 
 // Enum that will be used as a global state for the game
-#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+#[derive(State, Clone, Copy, Default, Eq, PartialEq, Debug, Hash)]
 enum GameState {
     #[default]
     Splash,
@@ -33,8 +33,9 @@ fn main() {
         // Insert as resource the initial value for the settings resources
         .insert_resource(DisplayQuality::Medium)
         .insert_resource(Volume(7))
-        // Declare the game state, whose starting value is determined by the `Default` trait
-        .init_state::<GameState>()
+        // Declare the game state
+        .register_state::<GameState>(StateTransitionsConfig::empty())
+        .init_state(None, Some(GameState::default()), true)
         .add_systems(Startup, setup)
         // Adds the plugins for each state
         .add_plugins((splash::splash_plugin, menu::menu_plugin, game::game_plugin))

@@ -1,81 +1,254 @@
-//! In Bevy, states are app-wide interdependent, finite state machines that are generally used to model the large scale structure of your program: whether a game is paused, if the player is in combat, if assets are loaded and so on.
-//!
-//! This module provides 3 distinct types of state, all of which implement the [`States`](state::States) trait:
-//!
-//! - Standard [`States`](state::States) can only be changed by manually setting the [`NextState<S>`](state::NextState) resource.
-//!   These states are the baseline on which the other state types are built, and can be used on
-//!   their own for many simple patterns. See the [state example](https://github.com/bevyengine/bevy/blob/latest/examples/state/state.rs)
-//!   for a simple use case.
-//! - [`SubStates`](state::SubStates) are children of other states - they can be changed manually using [`NextState<S>`](state::NextState),
-//!   but are removed from the [`World`](bevy_ecs::prelude::World) if the source states aren't in the right state. See the [sub_states example](https://github.com/bevyengine/bevy/blob/latest/examples/state/sub_states.rs)
-//!   for a simple use case based on the derive macro, or read the trait docs for more complex scenarios.
-//! - [`ComputedStates`](state::ComputedStates) are fully derived from other states - they provide a [`compute`](state::ComputedStates::compute) method
-//!   that takes in the source states and returns their derived value. They are particularly useful for situations
-//!   where a simplified view of the source states is necessary - such as having an `InAMenu` computed state, derived
-//!   from a source state that defines multiple distinct menus. See the [computed state example](https://github.com/bevyengine/bevy/blob/latest/examples/state/computed_states.rs)
-//!   to see usage samples for these states.
-//!
-//! Most of the utilities around state involve running systems during transitions between states, or
-//! determining whether to run certain systems, though they can be used more directly as well. This
-//! makes it easier to transition between menus, add loading screens, pause games, and the more.
-//!
-//! Specifically, Bevy provides the following utilities:
-//!
-//! - 3 Transition Schedules - [`OnEnter<S>`](crate::state::OnEnter), [`OnExit<S>`](crate::state::OnExit) and [`OnTransition<S>`](crate::state::OnTransition) - which are used
-//!   to trigger systems specifically during matching transitions.
-//! - A [`StateTransitionEvent<S>`](crate::state::StateTransitionEvent) that gets fired when a given state changes.
-//! - The [`in_state<S>`](crate::condition::in_state) and [`state_changed<S>`](crate::condition::state_changed) run conditions - which are used
-//!   to determine whether a system should run based on the current state.
-
-// `rustdoc_internals` is needed for `#[doc(fake_variadics)]`
-#![allow(internal_features)]
-#![cfg_attr(any(docsrs, docsrs_dep), feature(rustdoc_internals))]
+//! New states wahoo
 
 #[cfg(feature = "bevy_app")]
-/// Provides [`App`](bevy_app::App) and [`SubApp`](bevy_app::SubApp) with state installation methods
 pub mod app;
-/// Provides extension methods for [`Commands`](bevy_ecs::prelude::Commands).
 pub mod commands;
-/// Provides definitions for the runtime conditions that interact with the state system
-pub mod condition;
-/// Provides definitions for the basic traits required by the state system
+pub mod data;
+pub mod scheduling;
 pub mod state;
+pub mod state_set;
+pub mod transitions;
+pub mod util;
 
-/// Provides [`StateScoped`](crate::state_scoped::StateScoped) and
-/// [`clear_state_scoped_entities`](crate::state_scoped::clear_state_scoped_entities) for managing lifetime of entities.
-pub mod state_scoped;
-#[cfg(feature = "bevy_app")]
-/// Provides [`App`](bevy_app::App) and [`SubApp`](bevy_app::SubApp) with methods for registering
-/// state-scoped events.
-pub mod state_scoped_events;
-
-#[cfg(feature = "bevy_reflect")]
-/// Provides definitions for the basic traits required by the state system
-pub mod reflect;
-
-/// The state prelude.
-///
-/// This includes the most common types in this crate, re-exported for your convenience.
 pub mod prelude {
     #[cfg(feature = "bevy_app")]
-    #[doc(hidden)]
-    pub use crate::app::AppExtStates;
-    #[doc(hidden)]
-    pub use crate::commands::CommandsStatesExt;
-    #[doc(hidden)]
-    pub use crate::condition::*;
-    #[cfg(feature = "bevy_reflect")]
-    #[doc(hidden)]
-    pub use crate::reflect::{ReflectFreelyMutableState, ReflectState};
-    #[doc(hidden)]
-    pub use crate::state::{
-        last_transition, ComputedStates, EnterSchedules, ExitSchedules, NextState, OnEnter, OnExit,
-        OnTransition, State, StateSet, StateTransition, StateTransitionEvent, States, SubStates,
-        TransitionSchedules,
+    pub use crate::app::StatePlugin;
+    pub use crate::commands::StatesExt;
+    pub use crate::data::{StateData, StateUpdate};
+    pub use crate::state::State;
+    pub use crate::state_set::{StateDependencies, StateSet};
+    pub use crate::transitions::{OnEnter, OnExit, OnReenter, OnReexit, StateTransitionsConfig};
+    pub use crate::util::{in_state, state_changed, GlobalState, GlobalStateMut};
+
+    pub use bevy_state_macros::State;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{any::type_name, fmt::Debug};
+
+    use bevy_ecs::{
+        entity::Entity,
+        event::Event,
+        observer::Trigger,
+        schedule::Schedules,
+        system::{ResMut, Resource},
+        world::World,
     };
-    #[doc(hidden)]
-    pub use crate::state_scoped::StateScoped;
-    #[cfg(feature = "bevy_app")]
-    #[doc(hidden)]
-    pub use crate::state_scoped_events::StateScopedEventsAppExt;
+    use bevy_state_macros::State;
+
+    use crate::{
+        self as bevy_state,
+        data::StateUpdate,
+        scheduling::StateTransition,
+        state_set::StateDependencies,
+        transitions::{OnEnter, OnExit, StateTransitionsConfig},
+    };
+    use crate::{commands::StatesExt, data::StateData, state::State};
+
+    #[derive(State, Clone, Debug, PartialEq)]
+    enum ManualState {
+        A,
+        B,
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct ComputedState;
+
+    impl State for ComputedState {
+        type DependencySet = ManualState;
+        type Target = ();
+
+        fn update<'a>(
+            _state: &mut StateData<Self>,
+            dependencies: StateDependencies<'_, Self>,
+        ) -> StateUpdate<Self> {
+            let manual = dependencies;
+            match manual.current() {
+                Some(ManualState::A) => StateUpdate::Enable(ComputedState),
+                _ => StateUpdate::Disable,
+            }
+        }
+    }
+
+    #[derive(State, Clone, Debug, Default, PartialEq)]
+    #[dependency(ManualState = ManualState::B)]
+    enum SubState {
+        #[default]
+        X,
+        Y,
+    }
+
+    macro_rules! assert_states {
+        ($world:expr, $($state:expr),+) => {
+            $(assert_eq!($world.query::<&StateData<_>>().single($world).current, $state));+
+        };
+    }
+
+    fn test_all_states(world: &mut World, local: Option<Entity>) {
+        world.init_resource::<Schedules>();
+        world.register_state::<ManualState>(StateTransitionsConfig::empty());
+        world.register_state::<ComputedState>(StateTransitionsConfig::empty());
+        world.register_state::<SubState>(StateTransitionsConfig::empty());
+        world.register_state::<SubState>(StateTransitionsConfig::empty());
+        world.init_state::<ManualState>(local, None, true);
+        world.init_state::<ComputedState>(local, None, true);
+        world.init_state::<SubState>(local, None, true);
+        assert_states!(
+            world,
+            None::<ManualState>,
+            None::<ComputedState>,
+            None::<SubState>
+        );
+
+        world.state_target(local, Some(ManualState::A));
+        world.run_schedule(StateTransition);
+        assert_states!(
+            world,
+            Some(ManualState::A),
+            Some(ComputedState),
+            None::<SubState>
+        );
+
+        world.state_target(local, Some(ManualState::B));
+        world.run_schedule(StateTransition);
+        assert_states!(
+            world,
+            Some(ManualState::B),
+            None::<ComputedState>,
+            Some(SubState::X)
+        );
+
+        world.state_target(local, Some(SubState::Y));
+        world.run_schedule(StateTransition);
+        assert_states!(
+            world,
+            Some(ManualState::B),
+            None::<ComputedState>,
+            Some(SubState::Y)
+        );
+
+        world.state_target(local, None::<ManualState>);
+        world.run_schedule(StateTransition);
+        assert_states!(
+            world,
+            None::<ManualState>,
+            None::<ComputedState>,
+            None::<SubState>
+        );
+    }
+
+    #[test]
+    fn global_state() {
+        let mut world = World::new();
+        let local = None;
+        test_all_states(&mut world, local);
+    }
+
+    #[test]
+    fn local_state() {
+        let mut world = World::new();
+        let local = Some(world.spawn_empty().id());
+        test_all_states(&mut world, local);
+    }
+
+    #[derive(Default, Resource)]
+    struct StateTransitionTracker(Vec<&'static str>);
+
+    fn track<E: Event>() -> impl Fn(Trigger<E>, ResMut<StateTransitionTracker>) {
+        move |_: Trigger<E>, mut reg: ResMut<StateTransitionTracker>| {
+            reg.0.push(type_name::<E>());
+        }
+    }
+
+    #[derive(State, Clone, Debug, PartialEq)]
+    enum ManualState2 {
+        C,
+        D,
+    }
+
+    #[derive(Clone, Debug, Default, PartialEq)]
+    enum SubState2 {
+        #[default]
+        X,
+        Y,
+    }
+
+    impl State for SubState2 {
+        type DependencySet = (ManualState, ManualState2);
+        type Target = StateUpdate<Self>;
+
+        fn update<'a>(
+            state: &mut StateData<Self>,
+            dependencies: StateDependencies<'_, Self>,
+        ) -> StateUpdate<Self> {
+            let (manual1, manual2) = dependencies;
+            match (
+                manual1.current(),
+                manual2.current(),
+                state.target_mut().take(),
+            ) {
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Enable(next)) => {
+                    StateUpdate::Enable(next)
+                }
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Disable) => {
+                    StateUpdate::Nothing
+                }
+                (Some(ManualState::B), Some(ManualState2::D), StateUpdate::Nothing) => {
+                    StateUpdate::Enable(SubState2::X)
+                }
+                _ => StateUpdate::Disable,
+            }
+        }
+    }
+
+    #[test]
+    fn transition_order() {
+        let mut world = World::new();
+        world.init_resource::<Schedules>();
+        world.register_state::<ManualState>(StateTransitionsConfig::default());
+        world.register_state::<ManualState2>(StateTransitionsConfig::default());
+        world.register_state::<SubState2>(StateTransitionsConfig::default());
+        world.register_state::<ComputedState>(StateTransitionsConfig::default());
+        world.init_state::<ManualState>(None, None, true);
+        world.init_state::<ManualState>(None, None, true);
+        world.init_state::<SubState2>(None, None, true);
+        world.init_state::<ComputedState>(None, None, true);
+        world.state_target(None, Some(ManualState::A));
+        world.state_target(None, Some(ManualState2::C));
+        world.run_schedule(StateTransition);
+
+        world.init_resource::<StateTransitionTracker>();
+        world.observe(track::<OnExit<ManualState>>());
+        world.observe(track::<OnEnter<ManualState>>());
+        world.observe(track::<OnExit<ManualState2>>());
+        world.observe(track::<OnEnter<ManualState2>>());
+        world.observe(track::<OnExit<SubState2>>());
+        world.observe(track::<OnEnter<SubState2>>());
+        world.observe(track::<OnExit<ComputedState>>());
+        world.observe(track::<OnEnter<ComputedState>>());
+        world.state_target(None, Some(ManualState::B));
+        world.state_target(None, Some(ManualState2::D));
+        world.run_schedule(StateTransition);
+
+        let transitions = &world.resource::<StateTransitionTracker>().0;
+        // Test in groups, because order of directly unrelated states is non-deterministic.
+        assert!(transitions[0..=1].contains(&type_name::<OnExit<SubState2>>()));
+        assert!(transitions[0..=1].contains(&type_name::<OnExit<ComputedState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<OnExit<ManualState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<OnExit<ManualState2>>()));
+        assert!(transitions[4..=5].contains(&type_name::<OnEnter<ManualState>>()));
+        assert!(transitions[4..=5].contains(&type_name::<OnEnter<ManualState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<OnEnter<SubState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<OnEnter<ComputedState>>()));
+    }
+
+    // Debug stuff
+
+    #[allow(unused_macros)]
+    macro_rules! print_states {
+        ($world:expr, $($state:ty),+) => {
+            $(println!("{:?}", $world.query::<&StateData<$state>>().single($world)));+
+        };
+    }
 }
