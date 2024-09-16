@@ -10,7 +10,7 @@ use bevy_utils::tracing::warn;
 
 use crate::{
     data::StateData,
-    state::{GlobalStateMarker, State, StateUpdate},
+    state::{GlobalStateMarker, State, StateTransitionsConfig, StateUpdate},
 };
 
 struct InitializeStateCommand<S: State> {
@@ -122,7 +122,7 @@ impl<S: State<Target = StateUpdate<S>>> Command for SetStateTargetCommand<S> {
 /// All of the operations can happen immediatelly (with [`World`], [`SubApp`](bevy_app::SubApp), [`App`](bevy_app::App)) or in a deferred manner (with [`Commands`]).
 pub trait StatesExt {
     /// Registers machinery for this state as well as all dependencies.
-    fn register_state<S: State>(&mut self);
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>);
 
     /// Adds the state to the provided `local` entity or otherwise the global state.
     /// If initial update is suppresed, no initial transitions will be generated.
@@ -148,9 +148,9 @@ pub trait StatesExt {
 }
 
 impl StatesExt for Commands<'_, '_> {
-    fn register_state<S: State>(&mut self) {
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) {
         self.add(|world: &mut World| {
-            S::register_state(world);
+            S::register_state(world, config, false);
         });
     }
 
@@ -177,8 +177,8 @@ impl StatesExt for Commands<'_, '_> {
 }
 
 impl StatesExt for World {
-    fn register_state<S: State>(&mut self) {
-        S::register_state(self);
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) {
+        S::register_state(self, config, false);
     }
 
     fn init_state<S: State>(
@@ -201,8 +201,8 @@ impl StatesExt for World {
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::SubApp {
-    fn register_state<S: State>(&mut self) {
-        self.world_mut().register_state::<S>();
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) {
+        self.world_mut().register_state::<S>(config);
     }
 
     fn init_state<S: State>(
@@ -226,8 +226,8 @@ impl StatesExt for bevy_app::SubApp {
 
 #[cfg(feature = "bevy_app")]
 impl StatesExt for bevy_app::App {
-    fn register_state<S: State>(&mut self) {
-        self.main_mut().register_state::<S>();
+    fn register_state<S: State>(&mut self, config: StateTransitionsConfig<S>) {
+        self.main_mut().register_state::<S>(config);
     }
 
     fn init_state<S: State>(

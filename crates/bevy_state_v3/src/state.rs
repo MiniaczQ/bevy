@@ -4,7 +4,9 @@ use bevy_ecs::{
     component::{Component, Components, RequiredComponents},
     entity::Entity,
     query::{Has, QuerySingleError, ReadOnlyQueryData, With, WorldQuery},
-    schedule::{IntoSystemConfigs, IntoSystemSetConfigs, ScheduleLabel, Schedules, SystemSet},
+    schedule::{
+        IntoSystemConfigs, IntoSystemSetConfigs, ScheduleLabel, Schedules, SystemConfigs, SystemSet,
+    },
     storage::Storages,
     system::{Commands, Query},
     world::World,
@@ -13,7 +15,7 @@ use bevy_utils::{all_tuples, tracing::warn};
 
 use crate::{
     data::StateData,
-    events::{StateEnter, StateExit},
+    events::{OnEnter, OnExit},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, ScheduleLabel)]
@@ -73,6 +75,54 @@ impl StateSystemSet {
 pub type StateDependencies<'a, S> =
     <<<S as State>::DependencySet as StateSet>::Query as WorldQuery>::Item<'a>;
 
+pub struct StateTransitionsConfig<S: State> {
+    systems: Vec<SystemConfigs>,
+    _state: PhantomData<S>,
+}
+
+impl<S: State> Default for StateTransitionsConfig<S> {
+    fn default() -> Self {
+        Self {
+            systems: vec![
+                on_exit_transition::<S>
+                    .in_set(StateSystemSet::exit::<S>())
+                    .into(),
+                on_enter_transition::<S>
+                    .in_set(StateSystemSet::enter::<S>())
+                    .into(),
+            ],
+            _state: Default::default(),
+        }
+    }
+}
+
+impl<S: State> StateTransitionsConfig<S> {
+    /// Config that creates no transitions.
+    /// For standard [`OnExit`] and [`OnEnter`] use the [`StateTransitionsConfig::default`].
+    pub fn empty() -> Self {
+        Self {
+            systems: vec![],
+            _state: PhantomData,
+        }
+    }
+
+    /// Adds a system to run when state is exited.
+    /// An example system that runs [`OnExit`] is [`on_exit_transition`].
+    pub fn with_on_exit<M>(mut self, system: impl IntoSystemConfigs<M>) -> Self {
+        self.systems
+            .push(system.in_set(StateSystemSet::exit::<S>()));
+        self
+    }
+
+    /// Adds a system to run when state is entered.
+    /// An example system that runs [`OnEnter`] is [`on_enter_transition`].
+    pub fn with_on_enter<M>(mut self, system: impl IntoSystemConfigs<M>) -> Self {
+        self.systems
+            .push(system.in_set(StateSystemSet::enter::<S>()));
+        self
+    }
+}
+
 /// Trait for types that act as a state.
 pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     /// Parent states which this state depends on.
@@ -92,15 +142,25 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
     ) -> StateUpdate<Self>;
 
     /// Registers this state in the world together with all dependencies.
-    fn register_state(world: &mut World) {
+    fn register_state(
+        world: &mut World,
+        transitions: StateTransitionsConfig<Self>,
+        recursive: bool,
+    ) {
         Self::DependencySet::register_required_states(world);
 
         match world
             .query_filtered::<(), With<RegisteredState<Self>>>()
             .get_single(world)
         {
-            // Already registered, skip.
             Ok(_) => {
+                // Skip warnings from recursive registers.
+                if !recursive {
+                    warn!(
+                        "State {} is already registered, additional configuration will be ignored.",
+                        type_name::<Self>()
+                    );
+                }
                 return;
             }
             Err(QuerySingleError::MultipleEntities(_)) => {
@@ -110,7 +170,6 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
                 );
                 return;
             }
-            // Not registered, continue.
             Err(QuerySingleError::NoEntities(_)) => {}
         }
 
@@ -121,8 +180,9 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
         let schedule = schedules.entry(StateTransition);
         schedule.configure_sets(StateSystemSet::configuration::<Self>());
         schedule.add_systems(Self::update_system.in_set(StateSystemSet::update::<Self>()));
-        schedule.add_systems(Self::exit_system.in_set(StateSystemSet::exit::<Self>()));
-        schedule.add_systems(Self::enter_system.in_set(StateSystemSet::enter::<Self>()));
+        for system in transitions.systems {
+            schedule.add_systems(system);
+        }
     }
 
     fn update_system(
@@ -144,31 +204,37 @@ pub trait State: Sized + Clone + Debug + PartialEq + Send + Sync + 'static {
             }
         }
     }
+}
 
-    fn exit_system(
-        mut commands: Commands,
-        query: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
-    ) {
-        for (entity, state, is_global) in query.iter() {
-            if !state.is_updated {
-                continue;
-            }
-            let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
-            commands.trigger_targets(StateExit::<Self>::default(), target);
+pub fn on_exit_transition<S: State>(
+    mut commands: Commands,
+    query: Query<(Entity, &StateData<S>, Has<GlobalStateMarker>)>,
+) {
+    for (entity, state, is_global) in query.iter() {
+        if !state.is_updated || state.is_reentrant() {
+            continue;
         }
+        let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
+        commands.trigger_targets(
+            OnExit::<S>::new(state.previous().cloned(), state.current().cloned()),
+            target,
+        );
     }
+}
 
-    fn enter_system(
-        mut commands: Commands,
-        states: Query<(Entity, &StateData<Self>, Has<GlobalStateMarker>)>,
-    ) {
-        for (entity, state, is_global) in states.iter() {
-            if !state.is_updated {
-                continue;
-            }
-            let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
-            commands.trigger_targets(StateEnter::<Self>::default(), target);
+pub fn on_enter_transition<S: State>(
+    mut commands: Commands,
+    states: Query<(Entity, &StateData<S>, Has<GlobalStateMarker>)>,
+) {
+    for (entity, state, is_global) in states.iter() {
+        if !state.is_updated || state.is_reentrant() {
+            continue;
         }
+        let target = is_global.then_some(Entity::PLACEHOLDER).unwrap_or(entity);
+        commands.trigger_targets(
+            OnEnter::<S>::new(state.previous().cloned(), state.current().cloned()),
+            target,
+        );
     }
 }
 
@@ -226,7 +292,7 @@ impl<S1: State> StateSet for S1 {
     }
 
     fn register_required_states(world: &mut World) {
-        S1::register_state(world);
+        S1::register_state(world, StateTransitionsConfig::default(), true);
     }
 
     fn is_changed(s1: &<Self::Query as WorldQuery>::Item<'_>) -> bool {
@@ -270,7 +336,7 @@ macro_rules! impl_state_set {
             }
 
             fn register_required_states(world: &mut World) {
-                $($type::register_state(world);)
+                $($type::register_state(world, StateTransitionsConfig::default(), true);)
                 +
             }
 
@@ -344,10 +410,10 @@ impl<S> StateUpdate<S> {
 
 /// Variable target backend for states.
 /// Different backends can allow for different features:
-/// - empty for computed states,
-/// - enum for overwrite requests,
-/// - mutable state that tracks changes,
-/// - stack of states.
+/// - [`()`] for no manual updates, only dependency based ones (computed states),
+/// - [`StateUpdate`] for overwrite-style control (root/sub states),
+/// - mutable target state, for combining multiple requests,
+/// - stack or vector of states.
 pub trait StateTarget: Default + Send + Sync + 'static {
     /// Returns whether the state should be updated.
     fn should_update(&self) -> bool;

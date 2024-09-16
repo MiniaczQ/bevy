@@ -21,11 +21,11 @@ mod tests {
     };
     use bevy_state_macros_v3::State;
 
-    use crate as bevy_state;
+    use crate::{self as bevy_state, state::StateTransitionsConfig};
     use crate::{
         commands::StatesExt,
         data::StateData,
-        events::{StateEnter, StateExit},
+        events::{OnEnter, OnExit},
         state::{State, StateDependencies, StateTransition, StateUpdate},
     };
 
@@ -40,18 +40,16 @@ mod tests {
 
     impl State for ComputedState {
         type DependencySet = ManualState;
-        type Target = StateUpdate<Self>;
+        type Target = ();
 
         fn update<'a>(
-            state: &mut StateData<Self>,
+            _state: &mut StateData<Self>,
             dependencies: StateDependencies<'_, Self>,
         ) -> StateUpdate<Self> {
             let manual = dependencies;
-            match (manual.current(), state.target()) {
-                // If next was requested, ignore it.
-                (_, StateUpdate::Enable(_)) => StateUpdate::Nothing,
+            match manual.current() {
                 // If parent is valid, enable the state.
-                (Some(ManualState::A), _) => StateUpdate::Enable(ComputedState),
+                Some(ManualState::A) => StateUpdate::Enable(ComputedState),
                 // If parent is invalid, disable the state.
                 _ => StateUpdate::Disable,
             }
@@ -74,9 +72,9 @@ mod tests {
 
     fn test_all_states(world: &mut World, local: Option<Entity>) {
         world.init_resource::<Schedules>();
-        world.register_state::<ManualState>();
-        world.register_state::<ComputedState>();
-        world.register_state::<SubState>();
+        world.register_state::<ManualState>(StateTransitionsConfig::default());
+        world.register_state::<ComputedState>(StateTransitionsConfig::default());
+        world.register_state::<SubState>(StateTransitionsConfig::default());
         world.init_state::<ManualState>(local, None, true);
         world.init_state::<ComputedState>(local, None, true);
         world.init_state::<SubState>(local, None, true);
@@ -192,10 +190,10 @@ mod tests {
     fn transition_order() {
         let mut world = World::new();
         world.init_resource::<Schedules>();
-        world.register_state::<ManualState>();
-        world.register_state::<ManualState2>();
-        world.register_state::<SubState2>();
-        world.register_state::<ComputedState>();
+        world.register_state::<ManualState>(StateTransitionsConfig::default());
+        world.register_state::<ManualState2>(StateTransitionsConfig::default());
+        world.register_state::<SubState2>(StateTransitionsConfig::default());
+        world.register_state::<ComputedState>(StateTransitionsConfig::default());
         world.init_state::<ManualState>(None, None, true);
         world.init_state::<ManualState>(None, None, true);
         world.init_state::<SubState2>(None, None, true);
@@ -205,27 +203,28 @@ mod tests {
         world.run_schedule(StateTransition);
 
         world.init_resource::<StateTransitionTracker>();
-        world.observe(track::<StateExit<ManualState>>());
-        world.observe(track::<StateEnter<ManualState>>());
-        world.observe(track::<StateExit<ManualState2>>());
-        world.observe(track::<StateEnter<ManualState2>>());
-        world.observe(track::<StateExit<SubState2>>());
-        world.observe(track::<StateEnter<SubState2>>());
-        world.observe(track::<StateExit<ComputedState>>());
-        world.observe(track::<StateEnter<ComputedState>>());
+        world.observe(track::<OnExit<ManualState>>());
+        world.observe(track::<OnEnter<ManualState>>());
+        world.observe(track::<OnExit<ManualState2>>());
+        world.observe(track::<OnEnter<ManualState2>>());
+        world.observe(track::<OnExit<SubState2>>());
+        world.observe(track::<OnEnter<SubState2>>());
+        world.observe(track::<OnExit<ComputedState>>());
+        world.observe(track::<OnEnter<ComputedState>>());
         world.state_target(None, Some(ManualState::B));
         world.state_target(None, Some(ManualState2::D));
         world.run_schedule(StateTransition);
 
         let transitions = &world.resource::<StateTransitionTracker>().0;
-        assert!(transitions[0..=1].contains(&type_name::<StateExit<SubState2>>()));
-        assert!(transitions[0..=1].contains(&type_name::<StateExit<ComputedState>>()));
-        assert!(transitions[2..=3].contains(&type_name::<StateExit<ManualState>>()));
-        assert!(transitions[2..=3].contains(&type_name::<StateExit<ManualState2>>()));
-        assert!(transitions[4..=5].contains(&type_name::<StateEnter<ManualState>>()));
-        assert!(transitions[4..=5].contains(&type_name::<StateEnter<ManualState2>>()));
-        assert!(transitions[6..=7].contains(&type_name::<StateEnter<SubState2>>()));
-        assert!(transitions[6..=7].contains(&type_name::<StateEnter<ComputedState>>()));
+        // Test in groups, because order of directly unrelated states is non-deterministic.
+        assert!(transitions[0..=1].contains(&type_name::<OnExit<SubState2>>()));
+        assert!(transitions[0..=1].contains(&type_name::<OnExit<ComputedState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<OnExit<ManualState>>()));
+        assert!(transitions[2..=3].contains(&type_name::<OnExit<ManualState2>>()));
+        assert!(transitions[4..=5].contains(&type_name::<OnEnter<ManualState>>()));
+        assert!(transitions[4..=5].contains(&type_name::<OnEnter<ManualState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<OnEnter<SubState2>>()));
+        assert!(transitions[6..=7].contains(&type_name::<OnEnter<ComputedState>>()));
     }
 
     // Debug stuff
