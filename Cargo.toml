@@ -1846,6 +1846,19 @@ description = "Advanced state patterns using Computed States."
 category = "State"
 wasm = false
 
+
+[[example]]
+name = "state_v3"
+path = "examples/state/simple.rs"
+doc-scrape-examples = true
+required-features = ["bevy_states_v3"]
+
+[package.metadata.example.state_v3]
+name = "Simple state"
+description = "TODO"
+category = "State v3"
+wasm = false
+
 [[example]]
 name = "custom_transitions"
 path = "examples/state/custom_transitions.rs"

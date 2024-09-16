@@ -4,6 +4,7 @@
 mod app;
 mod commands;
 mod data;
+mod scheduling;
 mod state;
 mod state_set;
 mod transitions;
@@ -23,16 +24,9 @@ mod tests {
     use bevy_state_macros_v3::State;
 
     use crate::{
-        self as bevy_state,
-        data::StateUpdate,
-        state_set::StateDependencies,
-        transitions::{OnEnter, OnExit, StateTransitionsConfig},
+        self as bevy_state, data::StateUpdate, scheduling::StateTransition, state_set::StateDependencies, transitions::{OnEnter, OnExit, StateTransitionsConfig}
     };
-    use crate::{
-        commands::StatesExt,
-        data::StateData,
-        state::{State, StateTransition},
-    };
+    use crate::{commands::StatesExt, data::StateData, state::State};
 
     #[derive(State, Clone, Debug, PartialEq)]
     enum ManualState {
@@ -53,9 +47,7 @@ mod tests {
         ) -> StateUpdate<Self> {
             let manual = dependencies;
             match manual.current() {
-                // If parent is valid, enable the state.
                 Some(ManualState::A) => StateUpdate::Enable(ComputedState),
-                // If parent is invalid, disable the state.
                 _ => StateUpdate::Disable,
             }
         }

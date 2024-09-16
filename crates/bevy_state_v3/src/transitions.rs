@@ -10,7 +10,8 @@ use bevy_ecs::{
 
 use crate::{
     data::{GlobalStateMarker, StateData},
-    state::{State, StateSystemSet},
+    scheduling::StateSystemSet,
+    state::State,
 };
 
 pub struct StateTransitionsConfig<S: State> {

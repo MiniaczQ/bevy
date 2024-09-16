@@ -1,6 +1,6 @@
 use bevy_app::{MainScheduleOrder, Plugin, PreStartup, PreUpdate};
 
-use crate::state::StateTransition;
+use crate::scheduling::StateTransition;
 
 pub struct StatesPlugin;
 
