@@ -19,7 +19,9 @@ mod tests {
         system::{ResMut, Resource},
         world::World,
     };
+    use bevy_state_macros_v3::State;
 
+    use crate as bevy_state;
     use crate::{
         commands::StatesExt,
         data::StateData,
@@ -27,24 +29,10 @@ mod tests {
         state::{State, StateDependencies, StateTransition, StateUpdate},
     };
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(State, Clone, Debug, PartialEq)]
     enum ManualState {
         A,
         B,
-    }
-
-    impl State for ManualState {
-        type DependencySet = ();
-        type Target = StateUpdate<Self>;
-
-        fn update<'a>(
-            state: &mut StateData<Self>,
-            _dependencies: StateDependencies<'_, Self>,
-        ) -> StateUpdate<Self> {
-            // Pure manual control.
-            // We ignore the update call from dependencies, because there are none.
-            state.target_mut().take()
-        }
     }
 
     #[derive(Clone, Debug, PartialEq)]
@@ -70,35 +58,12 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Debug, Default, PartialEq)]
+    #[derive(State, Clone, Debug, Default, PartialEq)]
+    #[dependency(ManualState = ManualState::B)]
     enum SubState {
         #[default]
         X,
         Y,
-    }
-
-    impl State for SubState {
-        type DependencySet = ManualState;
-        type Target = StateUpdate<Self>;
-
-        fn update<'a>(
-            state: &mut StateData<Self>,
-            dependencies: StateDependencies<'_, Self>,
-        ) -> StateUpdate<Self> {
-            let manual = dependencies;
-            match (manual.current(), state.target_mut().take()) {
-                // If parent state is valid, respect requested enabled next state.
-                (Some(ManualState::B), StateUpdate::Enable(next)) => StateUpdate::Enable(next),
-                // If parent state is valid and requested next state disables the state, ignore it.
-                (Some(ManualState::B), StateUpdate::Disable) => StateUpdate::Nothing,
-                // If parent state is valid and there was no next request, enable the state with default value.
-                (Some(ManualState::B), StateUpdate::Nothing) => {
-                    StateUpdate::Enable(SubState::default())
-                }
-                // If parent state is invalid, disable the state.
-                _ => StateUpdate::Disable,
-            }
-        }
     }
 
     macro_rules! assert_states {
@@ -182,7 +147,7 @@ mod tests {
         }
     }
 
-    #[derive(Clone, Debug, PartialEq)]
+    #[derive(State, Clone, Debug, PartialEq)]
     enum ManualState2 {
         C,
         D,
@@ -220,20 +185,6 @@ mod tests {
                 }
                 _ => StateUpdate::Disable,
             }
-        }
-    }
-
-    impl State for ManualState2 {
-        type DependencySet = ();
-        type Target = StateUpdate<Self>;
-
-        fn update<'a>(
-            state: &mut StateData<Self>,
-            _dependencies: StateDependencies<'_, Self>,
-        ) -> StateUpdate<Self> {
-            // Pure manual control.
-            // We ignore the update call from dependencies, because there are none.
-            state.target_mut().take()
         }
     }
 

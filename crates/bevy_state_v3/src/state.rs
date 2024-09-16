@@ -342,6 +342,20 @@ impl<S> StateUpdate<S> {
     }
 }
 
+/// Variable target backend for states.
+/// Different backends can allow for different features:
+/// - empty for computed states,
+/// - enum for overwrite requests,
+/// - mutable state that tracks changes,
+/// - stack of states.
+pub trait StateTarget: Default + Send + Sync + 'static {
+    /// Returns whether state should be updated.
+    fn is_changed(&self) -> bool;
+
+    /// Resets the target, usually by disabling the [`Self::is_changed`] until another request.
+    fn reset(&mut self);
+}
+
 impl<S: State> StateTarget for StateUpdate<S> {
     fn is_changed(&self) -> bool {
         self.is_something()
@@ -352,15 +366,10 @@ impl<S: State> StateTarget for StateUpdate<S> {
     }
 }
 
-/// Variable target backend for states.
-/// Different backends can allow for different features:
-/// - singular requests,
-/// - mutable state that tracks changes,
-/// - stack of states.
-pub trait StateTarget: Default + Send + Sync + 'static {
-    /// Returns whether state should be updated.
-    fn is_changed(&self) -> bool;
+impl StateTarget for () {
+    fn is_changed(&self) -> bool {
+        false
+    }
 
-    /// Resets the target, usually by disabling the [`Self::is_changed`] until another request.
-    fn reset(&mut self);
+    fn reset(&mut self) {}
 }
