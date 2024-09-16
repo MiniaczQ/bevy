@@ -9,8 +9,9 @@ use bevy_ecs::{
 use bevy_utils::tracing::warn;
 
 use crate::{
-    data::StateData,
-    state::{GlobalStateMarker, State, StateTransitionsConfig, StateUpdate},
+    data::{GlobalStateMarker, StateData, StateUpdate},
+    state::State,
+    transitions::StateTransitionsConfig,
 };
 
 struct InitializeStateCommand<S: State> {

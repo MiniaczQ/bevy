@@ -4,8 +4,9 @@
 mod app;
 mod commands;
 mod data;
-mod events;
 mod state;
+mod state_set;
+mod transitions;
 
 #[cfg(test)]
 mod tests {
@@ -21,12 +22,16 @@ mod tests {
     };
     use bevy_state_macros_v3::State;
 
-    use crate::{self as bevy_state, state::StateTransitionsConfig};
+    use crate::{
+        self as bevy_state,
+        data::StateUpdate,
+        state_set::StateDependencies,
+        transitions::{OnEnter, OnExit, StateTransitionsConfig},
+    };
     use crate::{
         commands::StatesExt,
         data::StateData,
-        events::{OnEnter, OnExit},
-        state::{State, StateDependencies, StateTransition, StateUpdate},
+        state::{State, StateTransition},
     };
 
     #[derive(State, Clone, Debug, PartialEq)]
@@ -72,9 +77,10 @@ mod tests {
 
     fn test_all_states(world: &mut World, local: Option<Entity>) {
         world.init_resource::<Schedules>();
-        world.register_state::<ManualState>(StateTransitionsConfig::default());
-        world.register_state::<ComputedState>(StateTransitionsConfig::default());
-        world.register_state::<SubState>(StateTransitionsConfig::default());
+        world.register_state::<ManualState>(StateTransitionsConfig::empty());
+        world.register_state::<ComputedState>(StateTransitionsConfig::empty());
+        world.register_state::<SubState>(StateTransitionsConfig::empty());
+        world.register_state::<SubState>(StateTransitionsConfig::empty());
         world.init_state::<ManualState>(local, None, true);
         world.init_state::<ComputedState>(local, None, true);
         world.init_state::<SubState>(local, None, true);

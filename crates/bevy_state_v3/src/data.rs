@@ -1,9 +1,11 @@
+use std::marker::PhantomData;
+
 use bevy_ecs::{
     component::{Component, Components, RequiredComponents, StorageType},
     storage::Storages,
 };
 
-use crate::state::{State, StateSet};
+use crate::{state::State, state_set::StateSet};
 
 /// State data component.
 #[derive(Debug)]
@@ -80,7 +82,7 @@ impl<S: State> StateData<S> {
     }
 
     /// Returns the previous, different state.
-    /// If the current state was reentered, this value won't be overwritten,
+    /// If the current state was reentered, this value will remain unchanged,
     /// instead the [`Self::is_reentrant()`] flag will be raised.
     pub fn previous(&self) -> Option<&S> {
         self.previous.as_ref()
@@ -114,4 +116,88 @@ impl<S: State> StateData<S> {
     pub fn target_mut(&mut self) -> &mut S::Target {
         &mut self.target
     }
+}
+
+/// Marker component for global states.
+#[derive(Component)]
+pub struct GlobalStateMarker;
+
+/// Used to keep track of which states are registered and which aren't.
+#[derive(Component)]
+pub struct RegisteredState<S: State>(PhantomData<S>);
+
+impl<S: State> Default for RegisteredState<S> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+#[derive(Default, Debug, Clone)]
+pub enum StateUpdate<S> {
+    #[default]
+    Nothing,
+    Disable,
+    Enable(S),
+}
+
+impl<S> StateUpdate<S> {
+    pub fn is_something(&self) -> bool {
+        if let Self::Nothing = self {
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn as_options(self) -> Option<Option<S>> {
+        match self {
+            StateUpdate::Nothing => None,
+            StateUpdate::Disable => Some(None),
+            StateUpdate::Enable(s) => Some(Some(s)),
+        }
+    }
+
+    pub fn as_ref(&self) -> StateUpdate<&S> {
+        match &self {
+            StateUpdate::Nothing => StateUpdate::Nothing,
+            StateUpdate::Disable => StateUpdate::Disable,
+            StateUpdate::Enable(s) => StateUpdate::Enable(s),
+        }
+    }
+
+    pub fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+}
+
+/// Variable target backend for states.
+/// Different backends can allow for different features:
+/// - [`()`] for no manual updates, only dependency based ones (computed states),
+/// - [`StateUpdate`] for overwrite-style control (root/sub states),
+/// - mutable target state, for combining multiple requests,
+/// - stack or vector of states.
+pub trait StateTarget: Default + Send + Sync + 'static {
+    /// Returns whether the state should be updated.
+    fn should_update(&self) -> bool;
+
+    /// Resets the target to reset change detection.
+    fn reset(&mut self);
+}
+
+impl<S: State> StateTarget for StateUpdate<S> {
+    fn should_update(&self) -> bool {
+        self.is_something()
+    }
+
+    fn reset(&mut self) {
+        self.take();
+    }
+}
+
+impl StateTarget for () {
+    fn should_update(&self) -> bool {
+        false
+    }
+
+    fn reset(&mut self) {}
 }
