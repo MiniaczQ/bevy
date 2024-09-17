@@ -2,7 +2,7 @@ use std::u32;
 
 use bevy_ecs::{
     component::{Components, RequiredComponents},
-    query::{ReadOnlyQueryData, WorldQuery},
+    query::{QueryData, ReadOnlyQueryData, WorldQuery},
     storage::Storages,
     world::World,
 };
@@ -16,7 +16,7 @@ pub type StateDependencies<'a, S> =
 /// Set of states used for dependencies.
 pub trait StateSet {
     /// Parameters provided to [`State::on_update`].
-    type Query: ReadOnlyQueryData;
+    type Query: QueryData + 'static;
 
     const HIGHEST_ORDER: u32;
 

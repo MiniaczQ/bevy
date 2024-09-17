@@ -1811,24 +1811,35 @@ category = "ECS (Entity Component System)"
 wasm = false
 
 [[example]]
-name = "global_state"
-path = "examples/state/global_state.rs"
+name = "simple_global_state"
+path = "examples/state/simple_global_state.rs"
 doc-scrape-examples = true
 
-[package.metadata.example.global_state]
-name = "Global state"
+[package.metadata.example.simple_global_state]
+name = "Simple global state"
 description = "Simple way of using global state"
 category = "State"
 wasm = false
 
 [[example]]
-name = "local_state"
-path = "examples/state/local_state.rs"
+name = "simple_local_state"
+path = "examples/state/simple_local_state.rs"
 doc-scrape-examples = true
 
-[package.metadata.example.local_state]
-name = "Local state"
+[package.metadata.example.simple_local_state]
+name = "Simple local state"
 description = "Simple way of using local state"
+category = "State"
+wasm = false
+
+[[example]]
+name = "state_hierarchy"
+path = "examples/state/state_hierarchy.rs"
+doc-scrape-examples = true
+
+[package.metadata.example.state_hierarchy]
+name = "State hierarchy"
+description = "Combining multiple states into a single state machine"
 category = "State"
 wasm = false
 

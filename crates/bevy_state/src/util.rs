@@ -47,6 +47,8 @@ impl<'w, 's, S: State> GlobalStateMut<'w, 's, S> {
     }
 }
 
+impl SystemParam
+
 /// Run condition.
 /// Returns true if global state is set to the specified target.
 pub fn in_state<S: State>(target: Option<S>) -> impl Fn(GlobalState<S>) -> bool {

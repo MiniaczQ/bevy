@@ -1,5 +1,7 @@
 //! New states wahoo
 
+#![allow(unsafe_code)]
+
 #[cfg(feature = "bevy_app")]
 pub mod app;
 pub mod commands;
